@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="id">
+  <head>
+    <script>
+      (function() {
+        try {
+          var originalFetch = window.fetch;
+          var customFetch = originalFetch;
+          Object.defineProperty(window, 'fetch', {
+            get: function() {
+              return customFetch;
+            },
+            set: function(v) {
+              customFetch = v;
+            },
+            configurable: true,
+            enumerable: true
+          });
+        } catch (e) {
+          console.warn("Could not redefine window.fetch:", e);
+        }
+      })();
+    </script>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>KomplekMart - Belanja Sembako Cepat untuk Warga Kompleks</title>
+    <meta name="description" content="Aplikasi belanja sembako harian warga kompleks. Pengantaran cepat, gratis ongkir, dan mudah bayar via COD atau QRIS." />
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
+

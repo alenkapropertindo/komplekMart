@@ -1,0 +1,6 @@
+{
+  "name": "KomplekMart",
+  "description": "An ultra-local neighborhood grocery delivery dashboard and storefront for housing complexes.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
