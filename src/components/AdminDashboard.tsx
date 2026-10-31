@@ -50,6 +50,8 @@ interface AdminDashboardProps {
   onUpdateProductPrice?: (productId: string, newPrice: number) => void;
   onUpdateProductFlashSale?: (productId: string, isFlashSale: boolean, flashSalePrice?: number) => void;
   onDeleteOrder?: (orderId: string) => void;
+  unreadNotifications?: number;
+  onResetNotifications?: () => void;
 }
 
 type TabType = 'overview' | 'products' | 'orders' | 'residents';
@@ -68,7 +70,9 @@ export default function AdminDashboard({
   onUpdateProductPrice,
   onUpdateProductFlashSale,
   residents,
-  onDeleteOrder
+  onDeleteOrder,
+  unreadNotifications,
+  onResetNotifications
 }: AdminDashboardProps) {
   // Tabs for structured workflows
   const [activeTab, setActiveTab] = useState<TabType>('overview');
@@ -289,8 +293,11 @@ export default function AdminDashboard({
         </button>
 
         <button
-          onClick={() => setActiveTab('orders')}
-          className={`flex items-center gap-2 px-5 py-3 rounded-xl font-bold text-xs tracking-tight transition-all cursor-pointer whitespace-nowrap ${
+          onClick={() => {
+            setActiveTab('orders');
+            if (onResetNotifications) onResetNotifications();
+          }}
+          className={`relative flex items-center gap-2 px-5 py-3 rounded-xl font-bold text-xs tracking-tight transition-all cursor-pointer whitespace-nowrap ${
             activeTab === 'orders' 
               ? 'bg-[#ff6b00] text-white shadow-md' 
               : 'text-slate-500 hover:text-slate-800 hover:bg-slate-50'
@@ -298,6 +305,11 @@ export default function AdminDashboard({
         >
           <ShoppingBag className="w-4.5 h-4.5 stroke-[2.2]" />
           <span>Kelola Pesanan ({orders.filter(o => o.status !== 'Selesai').length} Aktif)</span>
+          {unreadNotifications && unreadNotifications > 0 && activeTab !== 'orders' && (
+            <span className="absolute -top-1 -right-1 bg-red-600 text-white text-[10px] w-5 h-5 flex items-center justify-center rounded-full font-bold border-2 border-white">
+              {unreadNotifications}
+            </span>
+          )}
         </button>
 
         <button
@@ -879,20 +891,22 @@ export default function AdminDashboard({
                             </span>
                           )}
 
-                          {/* Order cancellation */}
-                          <button
-                            type="button"
-                            onClick={() => {
-                              if (confirm(`Yakin ingin membatalkan/menghapus pesanan #${ord.id}?`)) {
-                                if (onDeleteOrder) onDeleteOrder(ord.id);
-                              }
-                            }}
-                            className="px-3 py-2 border border-rose-200 text-rose-600 hover:bg-rose-50 rounded-xl cursor-pointer text-xs font-bold flex items-center gap-1 shadow-sm transition-all"
-                            title="Batalkan Pesanan"
-                          >
-                            <X className="w-3.5 h-3.5 stroke-[2.5]" />
-                            <span>Batalkan</span>
-                          </button>
+                          {/* Order cancellation - only show if not completed */}
+                          {ord.status !== 'Selesai' && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                if (confirm(`Yakin ingin membatalkan/menghapus pesanan #${ord.id}?`)) {
+                                  if (onDeleteOrder) onDeleteOrder(ord.id);
+                                }
+                              }}
+                              className="px-3 py-2 border border-rose-200 text-rose-600 hover:bg-rose-50 rounded-xl cursor-pointer text-xs font-bold flex items-center gap-1 shadow-sm transition-all"
+                              title="Batalkan Pesanan"
+                            >
+                              <X className="w-3.5 h-3.5 stroke-[2.5]" />
+                              <span>Batalkan</span>
+                            </button>
+                          )}
                         </div>
                       </div>
 

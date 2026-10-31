@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { motion } from 'motion/react';
 import { 
   ArrowLeft,
@@ -12,6 +12,7 @@ import {
   QrCode
 } from 'lucide-react';
 import { CartItem } from '../types';
+import QuickLoginCard from './QuickLoginCard';
 
 interface CheckoutScreenProps {
   cartItems: CartItem[];
@@ -26,6 +27,8 @@ interface CheckoutScreenProps {
   defaultUserName: string;
   defaultPhone: string;
   defaultAddress: string;
+  isLoggedIn: boolean;
+  onQuickLogin: (phone: string) => Promise<{ success: boolean; message?: string }>;
 }
 
 export default function CheckoutScreen({
@@ -34,7 +37,9 @@ export default function CheckoutScreen({
   onPlaceOrder,
   defaultUserName,
   defaultPhone,
-  defaultAddress
+  defaultAddress,
+  isLoggedIn,
+  onQuickLogin
 }: CheckoutScreenProps) {
   const [address, setAddress] = useState(defaultAddress);
   const [name, setName] = useState(defaultUserName);
@@ -42,9 +47,17 @@ export default function CheckoutScreen({
   const [paymentMethod, setPaymentMethod] = useState('cod'); // cod or qris
   const [isOrdering, setIsOrdering] = useState(false);
 
+  // Keep the delivery fields in sync once the customer signs in
+  useEffect(() => {
+    if (!isLoggedIn) return;
+    if (defaultUserName) setName(defaultUserName);
+    if (defaultPhone) setPhone(defaultPhone);
+    if (defaultAddress) setAddress(defaultAddress);
+  }, [isLoggedIn, defaultUserName, defaultPhone, defaultAddress]);
+
   const subtotal = cartItems.reduce((acc, item) => acc + (item.product.price * item.quantity), 0);
-  const deliveryFee = 5000; // Flat Komplek rate Rp 5.000
-  const total = subtotal + deliveryFee;
+  const deliveryFee = 0; // Gratis ongkir untuk semua pesanan
+  const total = subtotal;
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -86,6 +99,14 @@ export default function CheckoutScreen({
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-6">
+        {/* Quick login for returning customers (phone number only) */}
+        <QuickLoginCard
+          isLoggedIn={isLoggedIn}
+          userName={defaultUserName}
+          userPhone={defaultPhone}
+          onLogin={onQuickLogin}
+        />
+
         {/* Delivery Address Section */}
         <section className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 space-y-4">
           <div className="flex items-center gap-2 pb-2 border-b border-slate-50">
@@ -281,8 +302,8 @@ export default function CheckoutScreen({
               <span className="text-slate-800 font-semibold">Rp {subtotal.toLocaleString('id-ID')}</span>
             </div>
             <div className="flex justify-between text-sm font-medium text-slate-500 animate-none">
-              <span>Ongkos Kirim (Flat Komplek)</span>
-              <span className="text-[#006e2f] font-bold">Rp {deliveryFee.toLocaleString('id-ID')}</span>
+              <span>Ongkos Kirim</span>
+              <span className="text-emerald-600 font-bold">Gratis</span>
             </div>
             <div className="flex justify-between items-center pt-3 border-t border-slate-50">
               <span className="text-base font-extrabold text-slate-800">Total Bayar</span>

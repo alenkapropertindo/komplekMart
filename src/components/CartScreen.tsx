@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { motion } from 'motion/react';
 import { 
   ShoppingBag, 
@@ -12,6 +12,7 @@ import {
   Phone
 } from 'lucide-react';
 import { CartItem } from '../types';
+import QuickLoginCard from './QuickLoginCard';
 
 interface CartScreenProps {
   cartItems: CartItem[];
@@ -28,6 +29,9 @@ interface CartScreenProps {
   defaultUserName: string;
   defaultPhone: string;
   defaultAddress: string;
+  isLoggedIn: boolean;
+  onQuickLogin: (phone: string) => Promise<{ success: boolean; message?: string }>;
+  isFlashSaleActive: boolean;
 }
 
 export default function CartScreen({
@@ -38,17 +42,29 @@ export default function CartScreen({
   onStartShopping,
   defaultUserName,
   defaultPhone,
-  defaultAddress
+  defaultAddress,
+  isLoggedIn,
+  onQuickLogin,
+  isFlashSaleActive
 }: CartScreenProps) {
   const [address, setAddress] = useState(defaultAddress);
   const [name, setName] = useState(defaultUserName);
   const [phone, setPhone] = useState(defaultPhone);
   const [paymentMethod, setPaymentMethod] = useState('cod');
   const [isOrdering, setIsOrdering] = useState(false);
+  const [showRegisterForm, setShowRegisterForm] = useState(true);
+
+  // Keep the delivery fields in sync once the customer signs in
+  useEffect(() => {
+    if (!isLoggedIn) return;
+    if (defaultUserName) setName(defaultUserName);
+    if (defaultPhone) setPhone(defaultPhone);
+    if (defaultAddress) setAddress(defaultAddress);
+  }, [isLoggedIn, defaultUserName, defaultPhone, defaultAddress]);
 
   const subtotal = cartItems.reduce((acc, item) => acc + (item.product.price * item.quantity), 0);
-  const deliveryFee = 5000; // Flat Komplek rate Rp 5.000
-  const total = subtotal + deliveryFee;
+  const deliveryFee = 0; // Gratis ongkir untuk semua pesanan
+  const total = subtotal;
 
   const handleSubmitOrder = (e: React.FormEvent) => {
     e.preventDefault();
@@ -161,8 +177,19 @@ export default function CartScreen({
                       </span>
                       <button 
                         type="button"
-                        onClick={() => onUpdateQuantity(item.id, item.quantity + 1)}
-                        className="w-7 h-7 flex items-center justify-center text-slate-600 hover:text-[#ff6b00] active:scale-95 transition-transform cursor-pointer"
+                        onClick={() => {
+                          if (item.product.isFlashSale && isFlashSaleActive) {
+                            alert("Maaf, produk promo Flash Sale dibatasi maksimal 1 per orang.");
+                            return;
+                          }
+                          onUpdateQuantity(item.id, item.quantity + 1);
+                        }}
+                        disabled={item.product.isFlashSale && isFlashSaleActive}
+                        className={`w-7 h-7 flex items-center justify-center text-slate-600 active:scale-95 transition-transform ${
+                          item.product.isFlashSale && isFlashSaleActive
+                            ? 'cursor-not-allowed opacity-40'
+                            : 'hover:text-[#ff6b00] cursor-pointer'
+                        }`}
                       >
                         <Plus className="w-3.5 h-3.5 stroke-[2.5]" />
                       </button>
@@ -173,61 +200,93 @@ export default function CartScreen({
             ))}
           </div>
 
-          {/* Customer & Delivery Form on Cart Page */}
-          <section className="bg-white p-6 rounded-3xl shadow-sm border border-slate-100 space-y-4">
-            <div className="flex items-center gap-2 pb-2 border-b border-slate-50">
-              <MapPin className="w-5 h-5 text-[#ff6b00]" />
-              <h2 className="text-base font-bold text-slate-800">Informasi Pengiriman &amp; Akun</h2>
-            </div>
-
+          {/* Quick login or form toggle */}
+          {!showRegisterForm ? (
             <div className="space-y-4">
-              <div className="space-y-1">
-                <label className="text-xs font-bold text-slate-500 ml-1">Nama Lengkap</label>
-                <div className="relative">
-                  <span className="absolute inset-y-0 left-0 pl-3 flex items-center text-slate-400">
-                    <User className="w-4 h-4" />
-                  </span>
-                  <input 
-                    className="w-full pl-10 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 outline-none focus:border-[#ff6b00]" 
-                    value={name}
-                    onChange={(e) => setName(e.target.value)}
-                    placeholder="Contoh: Budi Santoso" 
-                    type="text"
-                    required
-                  />
-                </div>
-              </div>
-
-              <div className="space-y-1">
-                <label className="text-xs font-bold text-slate-500 ml-1">No. WhatsApp</label>
-                <div className="relative">
-                  <span className="absolute inset-y-0 left-0 pl-3 flex items-center text-slate-400">
-                    <Phone className="w-4 h-4" />
-                  </span>
-                  <input 
-                    className="w-full pl-10 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 outline-none focus:border-[#ff6b00]" 
-                    value={phone}
-                    onChange={(e) => setPhone(e.target.value)}
-                    placeholder="Contoh: 08123456789" 
-                    type="text"
-                    required
-                  />
-                </div>
-              </div>
-
-              <div className="space-y-1">
-                <label className="text-xs font-bold text-slate-500 ml-1">Alamat / Blok Pengiriman</label>
-                <textarea 
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs font-bold text-slate-800 outline-none focus:border-[#ff6b00] resize-none" 
-                  value={address}
-                  onChange={(e) => setAddress(e.target.value)}
-                  placeholder="Contoh: Komplek Hijau Blok C4 No. 12" 
-                  rows={2}
-                  required
-                />
-              </div>
+              <QuickLoginCard
+                isLoggedIn={isLoggedIn}
+                userName={defaultUserName}
+                userPhone={defaultPhone}
+                onLogin={onQuickLogin}
+              />
+              
+              <button 
+                type="button"
+                onClick={() => setShowRegisterForm(true)}
+                className="w-full bg-slate-100 hover:bg-slate-150 text-slate-700 py-3 px-4 rounded-2xl font-bold text-xs active:scale-[0.98] transition-all cursor-pointer"
+              >
+                Belum punya akun? Isi Data Manual
+              </button>
             </div>
-          </section>
+          ) : (
+            <>
+              {/* Customer & Delivery Form on Cart Page */}
+              <section className="bg-white p-6 rounded-3xl shadow-sm border border-slate-100 space-y-4">
+                <div className="flex items-center gap-2 pb-2 border-b border-slate-50">
+                  <MapPin className="w-5 h-5 text-[#ff6b00]" />
+                  <h2 className="text-base font-bold text-slate-800">Informasi Pengiriman &amp; Akun</h2>
+                </div>
+
+                <div className="space-y-4">
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold text-slate-500 ml-1">Nama Lengkap</label>
+                    <div className="relative">
+                      <span className="absolute inset-y-0 left-0 pl-3 flex items-center text-slate-400">
+                        <User className="w-4 h-4" />
+                      </span>
+                      <input 
+                        className="w-full pl-10 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 outline-none focus:border-[#ff6b00]" 
+                        value={name}
+                        onChange={(e) => setName(e.target.value)}
+                        placeholder="Contoh: Budi Santoso" 
+                        type="text"
+                        required
+                      />
+                    </div>
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold text-slate-500 ml-1">No. WhatsApp</label>
+                    <div className="relative">
+                      <span className="absolute inset-y-0 left-0 pl-3 flex items-center text-slate-400">
+                        <Phone className="w-4 h-4" />
+                      </span>
+                      <input 
+                        className="w-full pl-10 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 outline-none focus:border-[#ff6b00]" 
+                        value={phone}
+                        onChange={(e) => setPhone(e.target.value)}
+                        placeholder="Contoh: 08123456789" 
+                        type="text"
+                        required
+                      />
+                    </div>
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold text-slate-500 ml-1">Alamat / Blok Pengiriman</label>
+                    <textarea 
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs font-bold text-slate-800 outline-none focus:border-[#ff6b00] resize-none" 
+                      value={address}
+                      onChange={(e) => setAddress(e.target.value)}
+                      placeholder="Contoh: Komplek Hijau Blok C4 No. 12" 
+                      rows={2}
+                      required
+                    />
+                  </div>
+
+                  <div className="text-center pt-2">
+                    <button 
+                      type="button"
+                      onClick={() => setShowRegisterForm(false)}
+                      className="text-[#ff6b00] font-bold text-sm border-b-2 border-[#ff6b00] hover:text-[#e05e00] hover:border-[#e05e00] transition-colors cursor-pointer bg-transparent inline-block"
+                    >
+                      Sudah punya akun? Masuk disini
+                    </button>
+                  </div>
+                </div>
+              </section>
+            </>
+          )}
 
           {/* Payment Method Section */}
           <section className="bg-white p-6 rounded-3xl shadow-sm border border-slate-100 space-y-4">
@@ -275,7 +334,7 @@ export default function CartScreen({
           <div className="fixed bottom-20 left-0 w-full bg-white/95 backdrop-blur-md border-t border-slate-100 p-6 shadow-[0_-8px_30px_rgb(0,0,0,0.04)] z-30">
             <div className="max-w-2xl mx-auto space-y-3">
               <div className="flex justify-between items-center text-xs font-bold text-slate-500">
-                <span>Total Belanja ({cartItems.reduce((a, c) => a + c.quantity, 0)} item + Ongkir Rp 5.000)</span>
+                <span>Total Belanja ({cartItems.reduce((a, c) => a + c.quantity, 0)} item - Gratis Ongkir)</span>
                 <span className="text-base font-extrabold text-[#ff6b00]">Rp {total.toLocaleString('id-ID')}</span>
               </div>
 

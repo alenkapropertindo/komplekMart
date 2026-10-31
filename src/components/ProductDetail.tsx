@@ -11,7 +11,6 @@ import {
   Award, 
   Scale, 
   Truck,
-  Timer,
   Bell,
   Lock,
   Flame
@@ -43,30 +42,29 @@ export default function ProductDetail({
   const [isFavorite, setIsFavorite] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [success, setSuccess] = useState(false);
-  const [showBlockedToast, setShowBlockedToast] = useState(false);
 
-  const isLockedFlashSale = !!product.isFlashSale && !isFlashSaleActive;
+  // Jika flash sale belum aktif, gunakan harga normal (originalPrice) jika ada
+  const effectivePrice = (product.isFlashSale && !isFlashSaleActive && product.originalPrice) 
+    ? product.originalPrice 
+    : product.price;
 
   const handleIncrement = () => {
-    if (isLockedFlashSale) return;
     setQuantity(prev => prev + 1);
   };
 
   const handleDecrement = () => {
-    if (isLockedFlashSale) return;
     setQuantity(prev => (prev > 1 ? prev - 1 : 1));
   };
 
   const handleAdd = () => {
-    if (isLockedFlashSale) {
-      setShowBlockedToast(true);
-      setTimeout(() => setShowBlockedToast(false), 3500);
-      return;
-    }
-
     setIsProcessing(true);
     setTimeout(() => {
-      onAddToCart(product, quantity);
+      // Masukkan ke keranjang dengan harga yang sesuai (harga normal jika flash sale belum aktif)
+      const productToAdd = {
+        ...product,
+        price: effectivePrice
+      };
+      onAddToCart(productToAdd, quantity);
       setIsProcessing(false);
       setSuccess(true);
       setTimeout(() => {
@@ -83,21 +81,6 @@ export default function ProductDetail({
       transition={{ duration: 0.3 }}
       className="max-w-2xl mx-auto pb-32 relative"
     >
-      {/* Toast Notification when trying to buy locked Flash Sale */}
-      {showBlockedToast && (
-        <motion.div
-          initial={{ opacity: 0, y: -20 }}
-          animate={{ opacity: 1, y: 0 }}
-          exit={{ opacity: 0, y: -20 }}
-          className="fixed top-20 left-1/2 -translate-x-1/2 z-50 max-w-md w-[90%] bg-slate-900 text-white p-3.5 rounded-2xl shadow-xl flex items-center gap-3 border border-slate-700 text-xs font-bold"
-        >
-          <Timer className="w-5 h-5 text-[#ff6b00] flex-shrink-0" />
-          <p className="flex-grow">
-            Flash Sale belum dimulai! Penawaran terbatas baru dibuka hari Jumat pukul 08:00 - 20:00 WIB.
-          </p>
-        </motion.div>
-      )}
-
       {/* Header toolbar */}
       <div className="flex items-center justify-between mb-4 mt-2">
         <button 
@@ -125,10 +108,10 @@ export default function ProductDetail({
         
         {/* Availability Badge */}
         <div className="absolute top-4 right-4">
-          {isLockedFlashSale ? (
+          {product.isFlashSale && !isFlashSaleActive ? (
             <span className="bg-slate-900/85 backdrop-blur-xs text-white px-3.5 py-1.5 rounded-full text-xs font-black shadow-md flex items-center gap-1.5 border border-slate-700">
               <Lock className="w-3.5 h-3.5 text-[#ff6b00]" />
-              <span>Flash Sale Jumat 8:00 AM</span>
+              <span>Promo Jumat 8:00 AM</span>
             </span>
           ) : (
             <span className="bg-[#6bff8f] text-[#007432] px-4 py-1.5 rounded-full text-xs font-bold shadow-md">
@@ -145,20 +128,20 @@ export default function ProductDetail({
         )}
       </section>
 
-      {/* FLASH SALE SPECIAL WARNING BANNER (When item is flash sale & locked) */}
-      {isLockedFlashSale && (
+      {/* FLASH SALE INFO BANNER (When item is flash sale & not active) */}
+      {product.isFlashSale && !isFlashSaleActive && (
         <section className="mt-4 p-4 rounded-2xl bg-[#fff3e8] border border-[#fedec5] flex items-start gap-3 shadow-sm">
           <div className="w-10 h-10 rounded-xl bg-orange-100 flex items-center justify-center text-[#ff6b00] flex-shrink-0">
-            <Timer className="w-5 h-5 stroke-[2.5]" />
+            <Flame className="w-5 h-5 stroke-[2.5]" />
           </div>
           <div className="flex-grow">
             <div className="flex items-center gap-1.5">
               <span className="text-xs font-black text-slate-800 uppercase tracking-wide">
-                Jangan Lewatkan 🔥
+                Flash Sale Akan Datang 🔥
               </span>
             </div>
             <p className="text-xs font-medium text-slate-600 mt-1">
-              Penawaran terbatas dimulai pada <strong className="text-[#ff6b00] font-black">Jumat 8:00 AM</strong> (berakhir pukul 20:00 WIB). Sebelum itu, produk promo belum bisa ditambahkan ke keranjang.
+              Produk ini akan diskon besar pada <strong className="text-[#ff6b00] font-black">Jumat 8:00 AM</strong>. Anda bisa membelinya sekarang dengan harga normal atau tunggu promo dimulai.
             </p>
             {onToggleReminder && (
               <button
@@ -171,7 +154,7 @@ export default function ProductDetail({
                 }`}
               >
                 <Bell className="w-3.5 h-3.5 stroke-[2.5]" />
-                <span>{isReminded ? 'Pengingat Aktif ✓' : 'Ingatkan Saya Saat Mulai'}</span>
+                <span>{isReminded ? 'Pengingat Aktif ✓' : 'Ingatkan Saat Diskon'}</span>
               </button>
             )}
           </div>
@@ -273,13 +256,10 @@ export default function ProductDetail({
       <div className="fixed bottom-0 left-0 w-full z-40 bg-white/95 backdrop-blur-md shadow-[0_-4px_24px_rgba(0,0,0,0.06)] border-t border-slate-100 px-6 py-4 flex items-center justify-between gap-4 rounded-t-3xl">
         <div className="max-w-2xl mx-auto flex items-center justify-between w-full gap-4">
           
-          {/* Quantity stepper (Only active when NOT locked) */}
-          <div className={`flex items-center gap-2 bg-slate-50 px-3 py-3 rounded-2xl border border-slate-100 ${
-            isLockedFlashSale ? 'opacity-40 pointer-events-none' : ''
-          }`}>
-            <button 
+          {/* Quantity stepper */}
+          <div className="flex items-center gap-2 bg-slate-50 px-3 py-3 rounded-2xl border border-slate-100">
+            <button
               onClick={handleDecrement}
-              disabled={isLockedFlashSale}
               className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-slate-200 text-slate-800 active:scale-90 transition-all cursor-pointer"
             >
               <Minus className="w-4 h-4 stroke-[2.5]" />
@@ -287,9 +267,8 @@ export default function ProductDetail({
             <span className="w-10 text-center text-base font-bold text-slate-900">
               {quantity}
             </span>
-            <button 
+            <button
               onClick={handleIncrement}
-              disabled={isLockedFlashSale}
               className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-slate-200 text-slate-800 active:scale-90 transition-all cursor-pointer"
             >
               <Plus className="w-4 h-4 stroke-[2.5]" />
@@ -297,43 +276,29 @@ export default function ProductDetail({
           </div>
 
           {/* Action button */}
-          {isLockedFlashSale ? (
-            <button 
-              onClick={() => {
-                if (onToggleReminder) onToggleReminder(product.id, product.name);
-                setShowBlockedToast(true);
-                setTimeout(() => setShowBlockedToast(false), 3500);
-              }}
-              className="flex-1 h-14 rounded-2xl font-bold text-sm bg-orange-50 hover:bg-orange-100 border-2 border-[#ff6b00] text-[#ff6b00] flex items-center justify-center gap-2 transition-all cursor-pointer shadow-sm active:scale-95"
-            >
-              <Bell className="w-5 h-5 stroke-[2.2]" />
-              <span>{isReminded ? 'Diingatkan (Mulai Jumat 8:00 AM)' : 'Ingatkan Saya (Mulai Jumat 8:00 AM)'}</span>
-            </button>
-          ) : (
-            <button 
-              onClick={handleAdd}
-              disabled={isProcessing || success}
-              className={`flex-1 h-14 rounded-2xl font-bold text-base flex items-center justify-center gap-2 transition-all shadow-lg shadow-[#ff6b00]/10 active:scale-95 cursor-pointer ${
-                success 
-                  ? 'bg-[#006e2f] text-white shadow-emerald-500/10' 
-                  : 'bg-[#ff6b00] hover:bg-[#e05e00] text-white'
-              }`}
-            >
-              {isProcessing ? (
-                <span className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-              ) : success ? (
-                <>
-                  <Check className="w-5 h-5 stroke-[2.5]" />
-                  <span>Berhasil Ditambahkan!</span>
-                </>
-              ) : (
-                <>
-                  <ShoppingBag className="w-5 h-5" />
-                  <span>Tambah ke Keranjang</span>
-                </>
-              )}
-            </button>
-          )}
+          <button 
+            onClick={handleAdd}
+            disabled={isProcessing || success}
+            className={`flex-1 h-14 rounded-2xl font-bold text-base flex items-center justify-center gap-2 transition-all shadow-lg shadow-[#ff6b00]/10 active:scale-95 cursor-pointer ${
+              success 
+                ? 'bg-[#006e2f] text-white shadow-emerald-500/10' 
+                : 'bg-[#ff6b00] hover:bg-[#e05e00] text-white'
+            }`}
+          >
+            {isProcessing ? (
+              <span className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+            ) : success ? (
+              <>
+                <Check className="w-5 h-5 stroke-[2.5]" />
+                <span>Berhasil Ditambahkan!</span>
+              </>
+            ) : (
+              <>
+                <ShoppingBag className="w-5 h-5" />
+                <span>Tambah ke Keranjang</span>
+              </>
+            )}
+          </button>
 
         </div>
       </div>

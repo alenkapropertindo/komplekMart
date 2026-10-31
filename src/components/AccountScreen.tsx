@@ -14,6 +14,7 @@ import {
   ShoppingBag
 } from 'lucide-react';
 import { UserProfile, Order } from '../types';
+import QuickLoginCard from './QuickLoginCard';
 
 interface AccountScreenProps {
   user: UserProfile | null;
@@ -21,6 +22,8 @@ interface AccountScreenProps {
   onUpdateUser: (updated: UserProfile) => void;
   onLogout: () => void;
   onSwitchScreen: (screen: 'home' | 'cart' | 'account' | 'admin') => void;
+  isLoggedIn: boolean;
+  onQuickLogin: (phone: string) => Promise<{ success: boolean; message?: string }>;
 }
 
 export default function AccountScreen({
@@ -28,12 +31,15 @@ export default function AccountScreen({
   orders,
   onUpdateUser,
   onLogout,
-  onSwitchScreen
+  onSwitchScreen,
+  isLoggedIn,
+  onQuickLogin
 }: AccountScreenProps) {
   const [editName, setEditName] = useState(user?.name || '');
   const [editPhone, setEditPhone] = useState(user?.phone || '');
   const [editAddress, setEditAddress] = useState(user?.address || '');
   const [isSavedSuccessfully, setIsSavedSuccessfully] = useState(false);
+  const [showRegisterForm, setShowRegisterForm] = useState(false);
 
   useEffect(() => {
     if (user) {
@@ -72,7 +78,6 @@ export default function AccountScreen({
     setTimeout(() => setIsSavedSuccessfully(false), 3000);
   };
 
-  // Filter orders belonging to this user from Supabase orders state
   const userOrders = orders.filter(o => 
     (user && o.customerName.toLowerCase() === user.name.toLowerCase()) || 
     (user && o.phone === user.phone)
@@ -89,80 +94,107 @@ export default function AccountScreen({
       >
         <div className="bg-white rounded-3xl p-8 shadow-sm border border-slate-100 text-center space-y-6">
           <div className="w-16 h-16 bg-orange-50 text-[#ff6b00] rounded-2xl flex items-center justify-center mx-auto">
-            <LogIn className="w-8 h-8" />
+            <User className="w-8 h-8" />
           </div>
           <div className="space-y-2">
-            <h2 className="text-xl font-extrabold text-slate-800">Masuk / Buat Akun Warga</h2>
+            <h2 className="text-xl font-extrabold text-slate-800">
+              {showRegisterForm ? 'Buat Akun Baru' : 'Masuk ke Akun'}
+            </h2>
             <p className="text-xs text-slate-400 font-semibold leading-relaxed">
-              Belum masuk? Masukkan data Anda di bawah ini untuk membuat akun instan tanpa password.
+              {showRegisterForm ? 'Isi data untuk buat akun instan' : 'Masuk dengan nomor WhatsApp'}
             </p>
           </div>
 
-          <form onSubmit={handleRegisterOrLogin} className="space-y-4 text-left">
-            <div>
-              <label className="block text-[10px] font-extrabold text-slate-400 mb-1.5 uppercase tracking-wide">Nama Lengkap</label>
-              <div className="relative">
-                <span className="absolute inset-y-0 left-0 pl-3.5 flex items-center text-slate-400">
-                  <User className="w-4 h-4" />
-                </span>
-                <input 
-                  type="text" 
-                  value={editName}
-                  onChange={(e) => setEditName(e.target.value)}
-                  required
-                  className="w-full pl-10 pr-4 py-3 bg-slate-50 border border-slate-200 focus:border-[#ff6b00]/50 rounded-2xl font-bold text-xs text-slate-800 outline-none transition-all"
-                  placeholder="Contoh: Budi Santoso"
-                />
-              </div>
-            </div>
+          {!showRegisterForm ? (
+            <>
+              <QuickLoginCard
+                isLoggedIn={false}
+                onLogin={onQuickLogin}
+              />
 
-            <div>
-              <label className="block text-[10px] font-extrabold text-slate-400 mb-1.5 uppercase tracking-wide">Nomor WhatsApp</label>
-              <div className="relative">
-                <span className="absolute inset-y-0 left-0 pl-3.5 flex items-center text-slate-400">
-                  <Phone className="w-4 h-4" />
-                </span>
-                <input 
-                  type="text" 
-                  value={editPhone}
-                  onChange={(e) => setEditPhone(e.target.value)}
-                  required
-                  className="w-full pl-10 pr-4 py-3 bg-slate-50 border border-slate-200 focus:border-[#ff6b00]/50 rounded-2xl font-bold text-xs text-slate-800 outline-none transition-all"
-                  placeholder="Contoh: 08123456789"
-                />
-              </div>
-            </div>
+              <button 
+                onClick={() => setShowRegisterForm(true)}
+                className="w-full text-center text-[#ff6b00] font-bold text-sm border-b-2 border-[#ff6b00] hover:text-[#e05e00] hover:border-[#e05e00] transition-colors cursor-pointer bg-transparent py-2"
+              >
+                Belum punya akun? Buat Akun
+              </button>
+            </>
+          ) : (
+            <>
+              <form onSubmit={handleRegisterOrLogin} className="space-y-4 text-left">
+                <div>
+                  <label className="block text-[10px] font-extrabold text-slate-400 mb-1.5 uppercase tracking-wide">Nama Lengkap</label>
+                  <div className="relative">
+                    <span className="absolute inset-y-0 left-0 pl-3.5 flex items-center text-slate-400">
+                      <User className="w-4 h-4" />
+                    </span>
+                    <input 
+                      type="text" 
+                      value={editName}
+                      onChange={(e) => setEditName(e.target.value)}
+                      required
+                      className="w-full pl-10 pr-4 py-3 bg-slate-50 border border-slate-200 focus:border-[#ff6b00]/50 rounded-2xl font-bold text-xs text-slate-800 outline-none transition-all"
+                      placeholder="Nama lengkap"
+                    />
+                  </div>
+                </div>
 
-            <div>
-              <label className="block text-[10px] font-extrabold text-slate-400 mb-1.5 uppercase tracking-wide">Alamat Blok Kompleks</label>
-              <div className="relative">
-                <span className="absolute inset-y-0 left-0 pl-3.5 flex items-center text-slate-400">
-                  <MapPin className="w-4 h-4" />
-                </span>
-                <input 
-                  type="text" 
-                  value={editAddress}
-                  onChange={(e) => setEditAddress(e.target.value)}
-                  required
-                  className="w-full pl-10 pr-4 py-3 bg-slate-50 border border-slate-200 focus:border-[#ff6b00]/50 rounded-2xl font-bold text-xs text-slate-800 outline-none transition-all"
-                  placeholder="Contoh: Blok A-5 Kompleks"
-                />
-              </div>
-            </div>
+                <div>
+                  <label className="block text-[10px] font-extrabold text-slate-400 mb-1.5 uppercase tracking-wide">Nomor WhatsApp</label>
+                  <div className="relative">
+                    <span className="absolute inset-y-0 left-0 pl-3.5 flex items-center text-slate-400">
+                      <Phone className="w-4 h-4" />
+                    </span>
+                    <input 
+                      type="text" 
+                      value={editPhone}
+                      onChange={(e) => setEditPhone(e.target.value)}
+                      required
+                      className="w-full pl-10 pr-4 py-3 bg-slate-50 border border-slate-200 focus:border-[#ff6b00]/50 rounded-2xl font-bold text-xs text-slate-800 outline-none transition-all"
+                      placeholder="08123456789"
+                    />
+                  </div>
+                </div>
 
-            <button 
-              type="submit"
-              className="w-full bg-[#ff6b00] hover:bg-[#e05e00] text-white py-3.5 px-4 rounded-2xl font-extrabold text-xs shadow-md active:scale-[0.98] transition-all flex items-center justify-center gap-2 cursor-pointer mt-2"
-            >
-              <Save className="w-4 h-4" />
-              <span>Masuk / Buat Akun Instan</span>
-            </button>
-          </form>
+                <div>
+                  <label className="block text-[10px] font-extrabold text-slate-400 mb-1.5 uppercase tracking-wide">Alamat Blok Kompleks</label>
+                  <div className="relative">
+                    <span className="absolute inset-y-0 left-0 pl-3.5 flex items-center text-slate-400">
+                      <MapPin className="w-4 h-4" />
+                    </span>
+                    <input 
+                      type="text" 
+                      value={editAddress}
+                      onChange={(e) => setEditAddress(e.target.value)}
+                      required
+                      className="w-full pl-10 pr-4 py-3 bg-slate-50 border border-slate-200 focus:border-[#ff6b00]/50 rounded-2xl font-bold text-xs text-slate-800 outline-none transition-all"
+                      placeholder="Blok A-5 Kompleks"
+                    />
+                  </div>
+                </div>
+
+                <button 
+                  type="submit"
+                  className="w-full bg-[#ff6b00] hover:bg-[#e05e00] text-white py-3.5 px-4 rounded-2xl font-extrabold text-xs shadow-md active:scale-[0.98] transition-all flex items-center justify-center gap-2 cursor-pointer"
+                >
+                  <Save className="w-4 h-4" />
+                  <span>Buat Akun Instan</span>
+                </button>
+              </form>
+
+              <button 
+                onClick={() => setShowRegisterForm(false)}
+                className="w-full text-center text-[#ff6b00] font-bold text-sm border-b-2 border-[#ff6b00] hover:text-[#e05e00] hover:border-[#e05e00] transition-colors cursor-pointer bg-transparent py-2"
+              >
+                Sudah punya akun? Masuk
+              </button>
+            </>
+          )}
 
           {isSavedSuccessfully && (
             <div className="p-3 bg-emerald-50 border border-emerald-150 rounded-2xl flex items-center gap-2 text-emerald-800 font-bold text-xs">
               <CheckCircle className="w-4 h-4 text-emerald-600 flex-shrink-0" />
-              <span>Akun berhasil dibuat &amp; masuk otomatis!</span>
+              <span>Akun berhasil dibuat & masuk otomatis!</span>
             </div>
           )}
         </div>
@@ -207,7 +239,7 @@ export default function AccountScreen({
         </p>
       </section>
 
-      {/* Edit Profile Section (Ubah Profil Warga) */}
+      {/* Edit Profile Section */}
       <section className="bg-white rounded-3xl p-6 shadow-sm border border-slate-100 space-y-4">
         <h3 className="text-sm font-black text-slate-800 flex items-center gap-2 uppercase tracking-wide">
           <Edit2 className="w-4.5 h-4.5 text-[#ff6b00]" />
@@ -287,7 +319,7 @@ export default function AccountScreen({
         )}
       </section>
 
-      {/* History orders section (Connected to Supabase DB) */}
+      {/* History orders section */}
       <section className="space-y-4">
         <div className="flex justify-between items-center">
           <h3 className="text-sm font-black text-slate-800 uppercase tracking-wide">Riwayat Pesanan</h3>

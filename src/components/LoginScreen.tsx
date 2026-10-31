@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { motion } from 'motion/react';
-import { ChevronRight } from 'lucide-react';
+import { ChevronRight, UserRound, LogIn, Loader2 } from 'lucide-react';
 
 interface LoginScreenProps {
   onLoginSuccess: (phoneNumber: string, name?: string, block?: string) => void;
@@ -9,6 +9,9 @@ interface LoginScreenProps {
 export default function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
   const [phone, setPhone] = useState('');
   const [block, setBlock] = useState('');
+  const [name, setName] = useState('');
+  const [showQuickLogin, setShowQuickLogin] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const formatPhoneNumber = (value: string) => {
     const raw = value.replace(/\D/g, '');
@@ -29,10 +32,20 @@ export default function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
     setPhone(formatted);
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleQuickLoginSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsSubmitting(true);
+    if (phone.replace(/\s/g, '').length >= 9) {
+      // Simulasi login eksisting user
+      onLoginSuccess('+62 ' + phone, undefined, block.trim() || undefined);
+    }
+    setIsSubmitting(false);
+  };
+
+  const handleRegisterSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (phone.replace(/\s/g, '').length >= 9) {
-      onLoginSuccess('+62 ' + phone, undefined, block.trim() || undefined);
+      onLoginSuccess('+62 ' + phone, name.trim() || undefined, block.trim() || undefined);
     }
   };
 
@@ -64,60 +77,159 @@ export default function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
           </p>
         </div>
 
-        {/* Login Form */}
-        <form onSubmit={handleSubmit} className="w-full space-y-5">
-          <div className="space-y-1.5">
-            <label className="text-[10px] font-black uppercase tracking-wider text-slate-500 ml-1" htmlFor="phone">
-              Nomor Telepon
-            </label>
-            <div className="relative flex items-center bg-slate-50 border border-slate-200 rounded-2xl rounded-2xl px-4 py-1">
-              <div className="pr-3 border-r border-slate-300/80 flex items-center gap-1">
-                <span className="text-slate-950 font-black text-base select-none font-mono">+62</span>
+        {!showQuickLogin ? (
+          /* Registration Form */
+          <>
+            <div className="w-full mb-4 flex items-start gap-2 bg-orange-50 border border-orange-100 rounded-2xl p-4">
+              <UserRound className="w-5 h-5 text-[#ff6b00] flex-shrink-0 mt-0.5" />
+              <div>
+                <h2 className="text-sm font-black text-slate-900">Informasi Pengiriman & Akun</h2>
               </div>
-              <input 
-                className="w-full py-3 px-3 bg-transparent border-none outline-none text-slate-950 font-black text-base placeholder:text-slate-400 font-mono"
-                id="phone" 
-                name="phone" 
-                value={phone}
-                onChange={handlePhoneChange}
-                placeholder="812 3456 7890" 
-                type="tel"
-                required
-              />
             </div>
-          </div>
-          <div className="space-y-1.5">
-            <label className="text-[10px] font-black uppercase tracking-wider text-slate-500 ml-1" htmlFor="block">
-              No. Blok Rumah <span className="text-[9px] text-slate-400 lowercase font-semibold">(opsional)</span>
-            </label>
-            <input 
-              className="w-full py-3.5 px-4 bg-slate-50 border border-slate-200 rounded-2xl rounded-2xl text-slate-900 font-bold text-sm placeholder:text-slate-400"
-              id="block" 
-              name="block" 
-              value={block}
-              onChange={(e) => setBlock(e.target.value)}
-              placeholder="Contoh: Blok B4 No. 12" 
-              type="text"
-            />
-          </div>
 
-          <p className="text-[11px] font-medium text-slate-500 px-1 text-center">
-            Kode verifikasi otomatis dikirimkan via SMS atau WhatsApp.
-          </p>
+            <form onSubmit={handleRegisterSubmit} className="w-full space-y-4">
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold text-slate-600 ml-1" htmlFor="name">
+                  Nama Lengkap
+                </label>
+                <div className="relative flex items-center bg-slate-50 border border-slate-200 rounded-xl px-4 py-1">
+                  <UserRound className="w-4 h-4 text-slate-400 mr-2" />
+                  <input 
+                    className="w-full py-3 bg-transparent border-none outline-none text-slate-950 font-bold text-sm placeholder:text-slate-400"
+                    id="name" 
+                    name="name" 
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    placeholder="Contoh: Budi Santoso" 
+                    type="text"
+                    required
+                  />
+                </div>
+              </div>
 
-          <button 
-            className="w-full h-14 bg-[#ff6b00] text-white hover:bg-[#e05e00] text-white font-black text-base rounded-2xl flex items-center justify-center gap-2 cursor-pointer shadow-lg active:scale-95 transition-all" 
-            type="submit"
-          >
-            <span>Masuk ke KomplekMart</span>
-            <ChevronRight className="w-5 h-5 stroke-[2.5]" />
-          </button>
-        </form>
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold text-slate-600 ml-1" htmlFor="phone">
+                  No. WhatsApp
+                </label>
+                <div className="relative flex items-center bg-slate-50 border border-slate-200 rounded-xl px-4 py-1">
+                  <div className="pr-3 border-r border-slate-300/80 flex items-center gap-1">
+                    <span className="text-slate-950 font-black text-sm select-none font-mono">+62</span>
+                  </div>
+                  <input 
+                    className="w-full py-3 px-3 bg-transparent border-none outline-none text-slate-950 font-bold text-sm placeholder:text-slate-400 font-mono"
+                    id="phone" 
+                    name="phone" 
+                    value={phone}
+                    onChange={handlePhoneChange}
+                    placeholder="Contoh: 08123456789" 
+                    type="tel"
+                    required
+                  />
+                </div>
+              </div>
 
-        {/* Demo info note */}
-        <div className="mt-6 text-center text-xs font-semibold text-slate-500">
-          Akun Demo Siap Pakai • Klik Masuk untuk Eksplorasi
-        </div>
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold text-slate-600 ml-1" htmlFor="block">
+                  Alamat / Blok Pengiriman
+                </label>
+                <input 
+                  className="w-full py-3.5 px-4 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 font-bold text-sm placeholder:text-slate-400"
+                  id="block" 
+                  name="block" 
+                  value={block}
+                  onChange={(e) => setBlock(e.target.value)}
+                  placeholder="Contoh: Komplek Hijau Blok C4 No. 12" 
+                  type="text"
+                  required
+                />
+              </div>
+
+              <button 
+                className="w-full h-14 bg-[#ff6b00] text-white hover:bg-[#e05e00] text-white font-black text-base rounded-xl flex items-center justify-center gap-2 cursor-pointer shadow-lg active:scale-95 transition-all" 
+                type="submit"
+              >
+                <span>Daftar & Mulai Belanja</span>
+                <ChevronRight className="w-5 h-5 stroke-[2.5]" />
+              </button>
+            </form>
+
+            {/* Quick Login Link */}
+            <div className="mt-6 text-center">
+              <button 
+                type="button"
+                className="text-[#ff6b00] font-bold text-sm border-b-2 border-[#ff6b00] hover:text-[#e05e00] hover:border-[#e05e00] transition-colors cursor-pointer bg-transparent"
+                onClick={() => setShowQuickLogin(true)}
+              >
+                Sudah punya akun? Masuk disini
+              </button>
+            </div>
+          </>
+        ) : (
+          /* Quick Login Form */
+          <>
+            <div className="w-full mb-4 flex items-start gap-2 bg-emerald-50 border border-emerald-100 rounded-2xl p-4">
+              <LogIn className="w-5 h-5 text-emerald-600 flex-shrink-0 mt-0.5" />
+              <div>
+                <h2 className="text-sm font-black text-slate-900">Sudah Punya Akun?</h2>
+                <p className="text-[11px] font-semibold text-slate-500 mt-0.5">
+                  Masuk dengan nomor WhatsApp yang sudah terdaftar
+                </p>
+              </div>
+            </div>
+
+            <form onSubmit={handleQuickLoginSubmit} className="w-full space-y-4">
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold text-slate-600 ml-1" htmlFor="phone_login">
+                  No. WhatsApp
+                </label>
+                <div className="relative flex items-center bg-slate-50 border border-slate-200 rounded-xl px-4 py-1">
+                  <div className="pr-3 border-r border-slate-300/80 flex items-center gap-1">
+                    <span className="text-slate-950 font-black text-sm select-none font-mono">+62</span>
+                  </div>
+                  <input 
+                    className="w-full py-3 px-3 bg-transparent border-none outline-none text-slate-950 font-bold text-sm placeholder:text-slate-400 font-mono"
+                    id="phone_login" 
+                    name="phone_login" 
+                    value={phone}
+                    onChange={handlePhoneChange}
+                    placeholder="812 3456 7890" 
+                    type="tel"
+                    required
+                  />
+                </div>
+              </div>
+
+              <button 
+                className="w-full h-14 bg-[#ff6b00] text-white hover:bg-[#e05e00] disabled:opacity-70 disabled:cursor-not-allowed text-white font-black text-base rounded-xl flex items-center justify-center gap-2 cursor-pointer shadow-lg active:scale-95 transition-all" 
+                type="submit"
+                disabled={isSubmitting}
+              >
+                {isSubmitting ? (
+                  <>
+                    <Loader2 className="w-5 h-5 animate-spin" />
+                    <span>Memeriksa...</span>
+                  </>
+                ) : (
+                  <>
+                    <LogIn className="w-5 h-5 stroke-[2.5]" />
+                    <span>Masuk ke Akun</span>
+                  </>
+                )}
+              </button>
+            </form>
+
+            {/* Back to Register Link */}
+            <div className="mt-6 text-center">
+              <button 
+                type="button"
+                className="text-[#ff6b00] font-bold text-sm border-b-2 border-[#ff6b00] hover:text-[#e05e00] hover:border-[#e05e00] transition-colors cursor-pointer bg-transparent"
+                onClick={() => setShowQuickLogin(false)}
+              >
+                Belum punya akun? Daftar disini
+              </button>
+            </div>
+          </>
+        )}
       </div>
     </motion.div>
   );

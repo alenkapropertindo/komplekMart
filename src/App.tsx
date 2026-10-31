@@ -32,6 +32,7 @@ import FloatingChat from './components/FloatingChat';
 export default function App() {
   // Authentication & Screen navigation
   const [user, setUser] = useState<UserProfile | null>(null); // Pre-logged in for better initial review
+  const [userRole, setUserRole] = useState<string | null>(null); // 'manager' atau 'resident'
   const [screen, setScreen] = useState<ScreenType>(ScreenType.HOME);
   const [isAdmin, setIsAdmin] = useState(false); // Switcher state between Client Storefront & Admin Dashboard
   const [showAccountDropdown, setShowAccountDropdown] = useState(false);
@@ -49,8 +50,9 @@ export default function App() {
     async function fetchData() {
       try {
         const { data: prodData, error: prodErr } = await supabase.from('products').select('*');
+        let loadedProducts = INITIAL_PRODUCTS;
         if (!prodErr && prodData && prodData.length > 0) {
-          setProducts(prodData.map((p: any) => ({
+          loadedProducts = prodData.map((p: any) => ({
             id: p.id,
             name: p.name,
             price: Number(p.price),
@@ -62,10 +64,42 @@ export default function App() {
             left: p.left_stock ?? 10,
             isFlashSale: p.is_flash_sale ?? false,
             originalPrice: p.original_price ? Number(p.original_price) : undefined
-          })));
-        } else {
-          setProducts([]);
+          }));
         }
+        
+        // Pastikan Air Galon dan Gas 3Kg selalu ada di produk
+        const hasGalon = loadedProducts.some(p => p.name === 'Air Galon');
+        const hasGas = loadedProducts.some(p => p.name === 'Gas 3Kg');
+        
+        if (!hasGalon) {
+          loadedProducts.unshift({
+            id: 'p_added_galon',
+            name: 'Air Galon',
+            price: 5000,
+            category: 'Air Galon',
+            image: 'https://lh3.googleusercontent.com/aida-public/AB6AXuAbr02q0Ugb_8xz6twlyHKgFnMml-mcjEfDxoQDp2A1-lkhb4R3LoDXsJc4db65mAfE7hBnQJ0lHOGMnuEpFF8I8izwGirsGAY5UbFVEXidOSGezqo1i8ZWf7TP56ThtIKceXVNE_sePlxqWiWUgmQsYUkdGvdppJECHBGkzqZm7QqJ0WELwGmUyhpAPyyrTRTCmthsFlqjSbY2E7ywFWtq3bJo-AiJMLSPib5WmKUxdQCTihBllfy0RFHo-1pB8Y94VbxXpenQMM45',
+            unit: '19 Liter',
+            rating: '4.9',
+            description: 'Air mineral galon isi ulang higienis.',
+            left: 20
+          });
+        }
+        
+        if (!hasGas) {
+          loadedProducts.unshift({
+            id: 'p_added_gas',
+            name: 'Gas 3Kg',
+            price: 28000,
+            category: 'Gas',
+            image: 'https://lh3.googleusercontent.com/aida-public/AB6AXuAsGtE9AswMvqosTT5WoCuVeXZFOK-bi8t6vFqiWU_bu-v50LBhCTos14X8gxLDUfT_2b8LiRnXWW04G4sE1dHH7u2tXvQUejwO8TP_XiukaPcSQr8SGCy8t4aIh1_jsFQnE6J96Elv3CTfJcJE-rsJY8n-dUCGTb-34ObQo5grcc-a_S5CkRLmjn5GJpeKIZyaY2ECcbHPi69kC1jez2gJJaIsT_F_mog5xcQVO436HFyBhyMZfd_wyWaM8OvtgdgzS-qNx9p0N2HX',
+            unit: 'Tabung 3Kg',
+            rating: '4.9',
+            description: 'Gas LPG 3Kg bersubsidi.',
+            left: 15
+          });
+        }
+        
+        setProducts(loadedProducts);
 
         const { data: ordData, error: ordErr } = await supabase.from('orders').select('*');
         if (!ordErr && ordData && ordData.length > 0) {
@@ -84,7 +118,7 @@ export default function App() {
             paymentMethod: o.payment_method
           })));
         } else {
-          setOrders([]);
+          setOrders(INITIAL_ORDERS);
         }
 
         const { data: resData, error: resErr } = await supabase.from('residents').select('*');
@@ -96,8 +130,23 @@ export default function App() {
             phone: r.phone,
             totalSpent: Number(r.total_spent || 0),
             transactions: Number(r.transactions || 0),
-            status: r.status || 'Aktif'
+            status: r.status || 'Aktif',
+            role: r.role
           })));
+
+          // Set default user jika belum ada
+          if (!user && resData.length > 0) {
+            const defaultRes = resData[0];
+            setUser({
+              name: defaultRes.name,
+              phone: defaultRes.phone,
+              address: defaultRes.block,
+              avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=300'
+            });
+            setUserRole(defaultRes.role || 'resident');
+            // Jangan auto-set isAdmin - biarkan false, user harus klik toggle
+            // setIsAdmin(defaultRes.role === 'manager');
+          }
         } else {
           setResidents([]);
         }
@@ -108,6 +157,97 @@ export default function App() {
     fetchData();
   }, []);
 
+  // Notification badge count & notifications list - MUST be BEFORE useEffect yang pakai
+  const [unreadNotifications, setUnreadNotifications] = useState(0);
+  const [showNotifications, setShowNotifications] = useState(false);
+  const [notificationsList, setNotificationsList] = useState<any[]>([]);
+
+  // Real-time listener untuk notifikasi
+  useEffect(() => {
+    // Skip jika belum login atau belum ada role
+    if (!userRole || !user?.phone) {
+      console.log('Skip notifications - userRole:', userRole, 'user:', user?.phone);
+      return;
+    }
+
+    // Load notifikasi dari database dengan filter role
+    async function loadNotifications() {
+      try {
+        let query = supabase
+          .from('notifications')
+          .select('*');
+
+        // Filter berdasarkan role
+        if (userRole === 'manager') {
+          // Admin: notifikasi order baru (target_phone = 'manager')
+          query = query.eq('target_phone', 'manager');
+        } else if (userRole === 'resident' && user?.phone) {
+          // Customer: notifikasi untuk nomor mereka saja
+          query = query.eq('target_phone', user.phone);
+        }
+
+        const { data, error } = await query.order('created_at', { ascending: false });
+        console.log('Load notifications - userRole:', userRole, 'user.phone:', user?.phone, 'data:', data, 'error:', error);
+        
+        if (data && data.length > 0) {
+          setUnreadNotifications(data.length);
+          setNotificationsList(data.map((n: any) => ({
+            id: n.id,
+            title: n.type === 'new_order' ? 'Pesanan Baru Masuk!' : 
+                   n.type === 'order_shipped' ? 'Pesanan Sedang Diantar!' : 'Pesan Baru',
+            body: n.type === 'new_order' ? `Pesanan #${n.order_id} masuk` :
+                  n.type === 'order_shipped' ? `Pesanan #${n.order_id} sedang diantar` : 'Ada update baru',
+            time: 'Baru saja'
+          })));
+        }
+      } catch (e) {
+        console.error('Error loading notifications:', e);
+      }
+    }
+
+    loadNotifications();
+
+    // Listen notifications table INSERT untuk role ini
+    const notifChannel = supabase
+      .channel('notifications-realtime')
+      .on('postgres_changes', { 
+        event: 'INSERT', 
+        schema: 'public', 
+        table: 'notifications' 
+      }, (payload) => {
+        console.log('Notification INSERT detected:', payload.new);
+        
+        // Filter: admin lihat target_phone='manager', resident lihat target_phone=nomor mereka
+        const notif = payload.new;
+        let shouldShow = false;
+        
+        if (userRole === 'manager' && notif.target_phone === 'manager') {
+          shouldShow = true;
+        } else if (userRole === 'resident' && notif.target_phone === user?.phone) {
+          shouldShow = true;
+        }
+        
+        if (!shouldShow) {
+          console.log('Skip notification - not for this user:', notif);
+          return;
+        }
+
+        setUnreadNotifications(prev => prev + 1);
+        setNotificationsList(prev => [{
+          id: notif.id,
+          title: notif.type === 'new_order' ? 'Pesanan Baru Masuk!' : 
+                 notif.type === 'order_shipped' ? 'Pesanan Sedang Diantar!' : 'Pesan Baru',
+          body: notif.type === 'new_order' ? `Pesanan #${notif.order_id} masuk` :
+                notif.type === 'order_shipped' ? `Pesanan #${notif.order_id} sedang diantar` : 'Update baru',
+          time: 'Baru saja'
+        }, ...prev]);
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(notifChannel);
+    };
+  }, [userRole, user]);
 
   // Core Dynamic Chat State representation (Synchronized globally)
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([
@@ -144,14 +284,6 @@ export default function App() {
       }
     ]);
   };
-
-  // Active notifications overlay mock trigger
-  const [showNotifications, setShowNotifications] = useState(false);
-  const [notificationsList, setNotificationsList] = useState([
-    { id: 1, title: 'Diskon Akhir Pekan!', body: 'Diskon 12% untuk beras premium diumumkan oleh Admin.', time: 'Baru saja' },
-    { id: 2, title: 'Kurir Sedang Mengantar', body: 'Pesanan #KM-8922 sedang meluncur ke Greenwood Blok A-5.', time: '10 menit lalu' },
-    { id: 3, title: 'Selamat Datang di KomplekMart!', body: 'Nikmati Gratis Ongkir flat se-kompleks bulan ini.', time: '1 hari lalu' }
-  ]);
 
   // Flash Sale Friday 08:00 - 20:00 WIB Schedule & Simulation State
   const [overrideFlashSaleSimulation, setOverrideFlashSaleSimulation] = useState(false);
@@ -197,9 +329,18 @@ export default function App() {
 
   // Cart operations
   const handleAddToCart = (product: Product, quantity = 1) => {
-    // Prevent adding flash sale products before Friday 8:00 AM
-    if (product.isFlashSale && !isFlashSaleActive) {
-      handleBlockedFlashSaleAdd();
+    // Restriction: Flash sale products only 1 per user during active hours
+    if (product.isFlashSale && isFlashSaleActive) {
+      setCart(prev => {
+        const existing = prev.find(item => item.product.id === product.id);
+        if (existing) {
+          // Already in cart, don't add more
+          alert("Maaf, produk promo Flash Sale dibatasi maksimal 1 per orang.");
+          return prev;
+        }
+        // Add only 1
+        return [...prev, { id: 'c_' + Date.now() + '_' + Math.random().toString(36).substring(2, 9), product, quantity: 1 }];
+      });
       return;
     }
 
@@ -254,6 +395,38 @@ export default function App() {
     const subtotal = cart.reduce((acc, item) => acc + (item.product.price * item.quantity), 0);
     const orderTotal = subtotal + details.deliveryFee;
 
+    // Restriction: User only one order per flash sale product per day
+    const flashSaleItems = cart.filter(item => item.product.isFlashSale && isFlashSaleActive);
+    
+    if (flashSaleItems.length > 0) {
+      // Cek dari tabel orders apakah user sudah order flash sale hari ini
+      const today = new Date();
+      const todayStr = today.toISOString().split('T')[0];
+      
+      const { data: todayOrders } = await supabase
+        .from('orders')
+        .select('items, created_at')
+        .eq('phone', details.phone)
+        .gte('created_at', todayStr + 'T00:00:00')
+        .lte('created_at', todayStr + 'T23:59:59');
+
+      if (todayOrders && todayOrders.length > 0) {
+        // Cek apakah ada item flash sale di order hari ini
+        const flashSaleProductNames = flashSaleItems.map(item => item.product.name);
+        const alreadyOrderedFlashSale = todayOrders.some(order => {
+          const items = order.items as Array<{ productName: string }>;
+          return items?.some((item: { productName: string }) => 
+            flashSaleProductNames.includes(item.productName)
+          );
+        });
+
+        if (alreadyOrderedFlashSale) {
+          alert("Maaf, Anda sudah melakukan order produk Flash Sale hari ini. Batasan promo adalah 1x per hari.");
+          return;
+        }
+      }
+    }
+
     const newOrder: Order = {
       id: 'KM-' + Math.floor(100000 + Math.random() * 900000),
       customerName: details.recipientName,
@@ -290,6 +463,19 @@ export default function App() {
         phone: newOrder.phone,
         payment_method: newOrder.paymentMethod
       });
+
+      // Notify all managers about new order
+      const { data: managers } = await supabase.from('residents').select('phone').eq('role', 'manager');
+      if (managers && managers.length > 0) {
+        const notificationInserts = managers.map(manager => ({
+          type: 'new_order',
+          order_id: newOrder.id,
+          target_phone: manager.phone,
+          is_read: false
+        }));
+        await supabase.from('notifications').insert(notificationInserts);
+        console.log('Notification sent to managers:', managers.length);
+      }
     } catch (e) {
       console.error('Supabase error placing order:', e);
     }
@@ -320,6 +506,30 @@ export default function App() {
       console.error('Supabase error saving resident:', e);
     }
 
+    // Kurangi stok produk (local state & supabase)
+    try {
+      setProducts(prevProducts => {
+        const updated = [...prevProducts];
+        cart.forEach(cartItem => {
+          const pIndex = updated.findIndex(p => p.id === cartItem.product.id || p.name === cartItem.product.name);
+          if (pIndex !== -1) {
+            const newLeft = Math.max(0, (updated[pIndex].left || 10) - cartItem.quantity);
+            updated[pIndex] = { ...updated[pIndex], left: newLeft };
+            
+            // Update ke supabase
+            supabase.from('products').update({ left_stock: newLeft })
+              .eq('id', updated[pIndex].id)
+              .then(({ error }) => {
+                if (error) console.error('Supabase error updating stock:', error);
+              });
+          }
+        });
+        return updated;
+      });
+    } catch (e) {
+      console.error('Error updating product stock:', e);
+    }
+
     setOrders(prev => [newOrder, ...prev]);
     setActiveOrder(newOrder);
     setCart([]); // Clear cart
@@ -338,6 +548,20 @@ export default function App() {
         status: nextStatus,
         status_description: desc
       }).eq('id', orderId);
+
+      // Notify customer when status becomes "Diantar"
+      if (nextStatus === 'Diantar') {
+        const order = orders.find(o => o.id === orderId);
+        if (order && order.phone) {
+          await supabase.from('notifications').insert({
+            type: 'order_shipped',
+            order_id: orderId,
+            target_phone: order.phone,
+            is_read: false
+          });
+          console.log('Notification sent to customer:', order.phone);
+        }
+      }
     } catch (e) {
       console.error('Supabase error updating order status:', e);
     }
@@ -474,18 +698,121 @@ export default function App() {
 
   const handleLogoutFlow = () => {
     setUser(null);
+    setUserRole(null);
     setScreen(ScreenType.LOGIN);
     setCart([]);
   };
 
-  const handleLoginSuccess = (phoneNumber: string, name?: string, block?: string) => {
+  const handleLoginSuccess = async (phoneNumber: string, name?: string, block?: string) => {
     setUser({
       name: name || 'Warga Kompleks',
       phone: phoneNumber,
       address: block || 'Blok A, Perumahan Asri',
       avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=300'
     });
+    
+    // Ambil role dari database
+    try {
+      const { data } = await supabase
+        .from('residents')
+        .select('role')
+        .eq('phone', phoneNumber)
+        .maybeSingle();
+      
+      if (data?.role) {
+        setUserRole(data.role);
+        setIsAdmin(data.role === 'manager');
+      } else {
+        setUserRole('resident');
+        setIsAdmin(false);
+      }
+    } catch (e) {
+      console.error('Error fetching role:', e);
+      setUserRole('resident');
+      setIsAdmin(false);
+    }
+    
     setScreen(ScreenType.HOME);
+  };
+
+  // Quick login via WhatsApp number, available from the cart & checkout screens
+  const handleQuickLogin = async (phoneInput: string): Promise<{ success: boolean; message?: string }> => {
+    const normalizePhone = (value: string) => {
+      let digits = value.replace(/\D/g, '');
+      if (digits.startsWith('62')) digits = digits.slice(2);
+      else if (digits.startsWith('0')) digits = digits.slice(1);
+      return digits;
+    };
+
+    const normalized = normalizePhone(phoneInput);
+    if (normalized.length < 9) {
+      return { success: false, message: 'Nomor telepon belum valid. Minimal 9 digit angka.' };
+    }
+
+    let found: { name: string; phone: string; address: string } | null = null;
+
+    const localMatch = residents.find(r => normalizePhone(r.phone) === normalized);
+    if (localMatch) {
+      found = {
+        name: localMatch.name,
+        phone: localMatch.phone,
+        address: localMatch.block
+      };
+    } else {
+      try {
+        const { data } = await supabase.from('residents').select('*');
+        const remoteMatch = (data || []).find(
+          (r: any) => normalizePhone(String(r.phone || '')) === normalized
+        );
+        if (remoteMatch) {
+          found = {
+            name: remoteMatch.name,
+            phone: remoteMatch.phone,
+            address: remoteMatch.block
+          };
+        }
+      } catch (e) {
+        console.error('Supabase error during quick login:', e);
+        return { success: false, message: 'Gagal memeriksa akun. Periksa koneksi lalu coba lagi.' };
+      }
+    }
+
+    if (!found) {
+      return {
+        success: false,
+        message: 'Nomor belum terdaftar. Isi data pengiriman di bawah untuk membuat akun otomatis.'
+      };
+    }
+
+    setUser({
+      name: found.name || 'Warga Kompleks',
+      phone: found.phone || normalized,
+      address: found.address || 'Blok A, Perumahan Asri',
+      avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=300'
+    });
+
+    // Set role
+    try {
+      const { data } = await supabase
+        .from('residents')
+        .select('role')
+        .eq('phone', found.phone)
+        .maybeSingle();
+      
+      if (data?.role) {
+        setUserRole(data.role);
+        setIsAdmin(data.role === 'manager');
+      } else {
+        setUserRole('resident');
+        setIsAdmin(false);
+      }
+    } catch (e) {
+      console.error('Error fetching role:', e);
+      setUserRole('resident');
+      setIsAdmin(false);
+    }
+
+    return { success: true };
   };
 
   const handleNotificationsClear = () => {
@@ -553,12 +880,23 @@ export default function App() {
           <div className="flex items-center gap-3 relative">
             {/* Notifications Trigger */}
             <button 
-              onClick={() => setShowNotifications(true)}
+              onClick={() => {
+                setShowNotifications(true);
+                setUnreadNotifications(0);
+                // Mark all notifications as read di database
+                supabase.from('notifications')
+                  .update({ is_read: true })
+                  .eq('is_read', false)
+                  .then()
+                  .catch(e => console.error('Error marking notifications as read:', e));
+              }}
               className="relative w-10 h-10 rounded-xl hover:bg-slate-50 transition-colors flex items-center justify-center border border-slate-100 cursor-pointer text-slate-600"
             >
               <Bell className="w-5 h-5 stroke-[2]" />
-              {notificationsList.length > 0 && (
-                <span className="absolute top-2.5 right-2.5 w-2 h-2 bg-[#ff6b00] rounded-full animate-ping" />
+              {unreadNotifications > 0 && (
+                <span className="absolute top-2 right-2 bg-red-600 text-white text-[10px] w-5 h-5 flex items-center justify-center rounded-full font-bold">
+                  {unreadNotifications}
+                </span>
               )}
             </button>
 
@@ -609,31 +947,33 @@ export default function App() {
 
                   {/* Menu Options */}
                   <div className="flex flex-col text-xs font-bold text-slate-600 gap-1 divide-y divide-slate-50">
-                    {/* Always visible toggle between Admin and Customer Storefront */}
-                    <button
-                      id="btn_dropdown_toggle_role"
-                      onClick={() => {
-                        setIsAdmin(!isAdmin);
-                        setShowAccountDropdown(false);
-                        if (isAdmin) {
-                          // Switching to Customer Storefront
-                          setScreen(ScreenType.HOME);
-                        }
-                      }}
-                      className="w-full py-2.5 px-3 flex items-center gap-2.5 hover:bg-orange-50 rounded-xl hover:text-[#ff6b00] active:scale-95 transition-all text-left cursor-pointer"
-                    >
-                      {isAdmin ? (
-                        <>
-                          <ShoppingCart className="w-4.5 h-4.5 text-[#ff6b00]" />
-                          <span>🛒 Toko Pelanggan</span>
-                        </>
-                      ) : (
-                        <>
-                          <Sliders className="w-4.5 h-4.5 text-[#ff6b00]" />
-                          <span>🔧 Dashboard Admin</span>
-                        </>
-                      )}
-                    </button>
+                    {/* Toggle Admin only untuk manager */}
+                    {userRole === 'manager' && (
+                      <button
+                        id="btn_dropdown_toggle_role"
+                        onClick={() => {
+                          setIsAdmin(!isAdmin);
+                          setShowAccountDropdown(false);
+                          if (isAdmin) {
+                            // Switching to Customer Storefront
+                            setScreen(ScreenType.HOME);
+                          }
+                        }}
+                        className="w-full py-2.5 px-3 flex items-center gap-2.5 hover:bg-orange-50 rounded-xl hover:text-[#ff6b00] active:scale-95 transition-all text-left cursor-pointer"
+                      >
+                        {isAdmin ? (
+                          <>
+                            <ShoppingCart className="w-4.5 h-4.5 text-[#ff6b00]" />
+                            <span>🛒 Toko Pelanggan</span>
+                          </>
+                        ) : (
+                          <>
+                            <Sliders className="w-4.5 h-4.5 text-[#ff6b00]" />
+                            <span>🔧 Dashboard Admin</span>
+                          </>
+                        )}
+                      </button>
+                    )}
 
                     {/* Customer Account Page option if we are in customer view */}
                     {!isAdmin && (
@@ -716,6 +1056,9 @@ export default function App() {
                   defaultUserName={user?.name || ''}
                   defaultPhone={user?.phone || ''}
                   defaultAddress={user?.address || ''}
+                  isLoggedIn={!!user}
+                  onQuickLogin={handleQuickLogin}
+                  isFlashSaleActive={isFlashSaleActive}
                 />
               )}
 
@@ -727,6 +1070,8 @@ export default function App() {
                   defaultUserName={user?.name || ''}
                   defaultPhone={user?.phone || ''}
                   defaultAddress={user?.address || ''}
+                  isLoggedIn={!!user}
+                  onQuickLogin={handleQuickLogin}
                 />
               )}
 
@@ -748,12 +1093,14 @@ export default function App() {
                   onUpdateUser={setUser}
                   onLogout={handleLogoutFlow}
                   onSwitchScreen={(sc) => {
-                    if (sc === 'admin') {
+                    if (sc === 'admin' && userRole === 'manager') {
                       setIsAdmin(true);
                     } else {
                       setScreen(sc as any);
                     }
                   }}
+                  isLoggedIn={!!user}
+                  onQuickLogin={handleQuickLogin}
                 />
               )}
             </>
@@ -773,6 +1120,8 @@ export default function App() {
               onUpdateProductPrice={handleUpdateProductPrice}
                   onUpdateProductFlashSale={handleUpdateProductFlashSale}
               onDeleteOrder={handleDeleteOrder}
+              unreadNotifications={unreadNotifications}
+              onResetNotifications={() => setUnreadNotifications(0)}
             />
           )}
 

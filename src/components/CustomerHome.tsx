@@ -105,7 +105,7 @@ export default function CustomerHome({
 
   const popularProducts = products.filter(p => p.left !== undefined);
   const flashSaleProducts = products.filter(p => p.isFlashSale);
-  const fastDeliveryProducts = products.filter(p => p.id === 'p11' || p.id === 'p12');
+  const fastDeliveryProducts = products.filter(p => p.name === 'Air Galon' || p.name === 'Gas 3Kg');
 
   const filteredProducts = products.filter((p) => {
     const matchesSearch = p.name.toLowerCase().includes(searchQuery.toLowerCase());
@@ -116,18 +116,12 @@ export default function CustomerHome({
   const handleQuickAdd = (e: React.MouseEvent, product: Product) => {
     e.stopPropagation();
 
-    // Prevent adding flash sale product when not active (before Friday 8:00 AM)
-    if (product.isFlashSale && !scheduleInfo.isActive) {
-      if (onBlockedFlashSaleAdd) {
-        onBlockedFlashSaleAdd();
-      } else {
-        setLocalToast('⚠️ Penawaran terbatas Flash Sale dimulai pada Jumat 8:00 AM. Produk belum bisa ditambahkan ke keranjang.');
-        setTimeout(() => setLocalToast(null), 3500);
-      }
-      return;
-    }
+    // Jika flash sale belum aktif, gunakan harga normal (originalPrice)
+    const productToAdd = product.isFlashSale && !scheduleInfo.isActive && product.originalPrice
+      ? { ...product, price: product.originalPrice }
+      : product;
 
-    onAddToCart(product);
+    onAddToCart(productToAdd);
     setAddedAnimationId(product.id);
     setTimeout(() => {
       setAddedAnimationId(null);
@@ -187,7 +181,7 @@ export default function CustomerHome({
       {/* ========================================================================= */}
       
 
-      {/* Antar Cepat Section (Placed below Flash Sale) */}
+      {/* Antar Cepat Section - Galon & Gas LPG (Placed above Flash Sale) */}
       {fastDeliveryProducts.length > 0 && (
         <section className="mb-8">
           <div className="flex items-center justify-between mb-3 bg-[#ff6b00]/5 px-4 py-3 rounded-2xl border border-[#ff6b00]/10">
@@ -436,9 +430,30 @@ export default function CustomerHome({
                       </div>
                     </div>
 
-                    {/* Action Button: "Ingatkan Saya" if inactive, "+ Keranjang" if active */}
+                    {/* Action Button: "Ingatkan Saya" when inactive, "+ Keranjang" when active */}
                     <div className="mt-3 pt-2 border-t border-slate-100">
-                      {scheduleInfo.isActive ? (
+                      {!scheduleInfo.isActive ? (
+                        <button 
+                          onClick={(e) => handleReminderClick(e, p)}
+                          className={`w-full py-2 px-3 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 shadow-xs active:scale-95 transition-all cursor-pointer ${
+                            isReminded 
+                              ? 'bg-emerald-600 text-white' 
+                              : 'bg-slate-700 hover:bg-slate-800 text-white'
+                          }`}
+                        >
+                          {isReminded ? (
+                            <>
+                              <Check className="w-3.5 h-3.5 stroke-[3]" />
+                              <span>Diingatkan</span>
+                            </>
+                          ) : (
+                            <>
+                              <Bell className="w-3.5 h-3.5 stroke-[3]" />
+                              <span>Ingatkan Saya</span>
+                            </>
+                          )}
+                        </button>
+                      ) : (
                         <button 
                           onClick={(e) => handleQuickAdd(e, p)}
                           className={`w-full py-2 px-3 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 shadow-xs active:scale-95 transition-all cursor-pointer ${
@@ -456,27 +471,6 @@ export default function CustomerHome({
                             <>
                               <Plus className="w-3.5 h-3.5 stroke-[3]" />
                               <span>+ Keranjang</span>
-                            </>
-                          )}
-                        </button>
-                      ) : (
-                        <button 
-                          onClick={(e) => handleReminderClick(e, p)}
-                          className={`w-full py-2 px-2.5 rounded-xl font-bold text-xs border transition-all active:scale-95 flex items-center justify-center gap-1.5 cursor-pointer ${
-                            isReminded
-                              ? 'border-[#006e2f] text-[#006e2f] bg-emerald-50'
-                              : 'border-[#ff6b00] text-[#ff6b00] hover:bg-orange-50 bg-white'
-                          }`}
-                        >
-                          {isReminded ? (
-                            <>
-                              <Check className="w-3.5 h-3.5 stroke-[3]" />
-                              <span>Diingatkan ✓</span>
-                            </>
-                          ) : (
-                            <>
-                              <Bell className="w-3.5 h-3.5 stroke-[2.2]" />
-                              <span>Ingatkan Saya</span>
                             </>
                           )}
                         </button>
