@@ -49,6 +49,10 @@ export default function App() {
   useEffect(() => {
     async function fetchData() {
       try {
+        // Cek session tersimpan di localStorage
+        const savedRole = localStorage.getItem('userRole');
+        const savedPhone = localStorage.getItem('userPhone');
+
         const { data: prodData, error: prodErr } = await supabase.from('products').select('*');
         let loadedProducts = INITIAL_PRODUCTS;
         if (!prodErr && prodData && prodData.length > 0) {
@@ -134,19 +138,26 @@ export default function App() {
             role: r.role
           })));
 
-          // Set default user jika belum ada
-          if (!user && resData.length > 0) {
-            const defaultRes = resData[0];
-            setUser({
-              name: defaultRes.name,
-              phone: defaultRes.phone,
-              address: defaultRes.block,
-              avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=300'
-            });
-            setUserRole(defaultRes.role || 'resident');
-            // Jangan auto-set isAdmin - biarkan false, user harus klik toggle
-            // setIsAdmin(defaultRes.role === 'manager');
+          // Restore session dari localStorage jika ada
+          if (savedRole && savedPhone) {
+            console.log('Restore session - savedRole:', savedRole, 'savedPhone:', savedPhone);
+            const savedUser = resData.find((r: any) => r.phone === savedPhone);
+            console.log('Saved user found:', savedUser);
+            if (savedUser) {
+              setUser({
+                name: savedUser.name,
+                phone: savedUser.phone,
+                address: savedUser.block,
+                avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=300'
+              });
+              setUserRole(savedRole);
+              // Restore isAdmin jika manager
+              if (savedRole === 'manager') {
+                setIsAdmin(true);
+              }
+            }
           }
+          // Jika tidak ada session, tetap guest mode - user harus login manual
         } else {
           setResidents([]);
         }
@@ -166,13 +177,19 @@ export default function App() {
   useEffect(() => {
     // Skip jika belum login atau belum ada role
     if (!userRole || !user?.phone) {
-      console.log('Skip notifications - userRole:', userRole, 'user:', user?.phone);
+      console.log('Skip notifications - userRole:', userRole, 'user.phone:', user?.phone);
       return;
     }
+
+    console.log('Notification effect triggered - userRole:', userRole, 'user.phone:', user?.phone);
 
     // Load notifikasi dari database dengan filter role
     async function loadNotifications() {
       try {
+        // Debug: ambil semua notifikasi dulu
+        const { data: allNotifs } = await supabase.from('notifications').select('*');
+        console.log('ALL notifications in DB:', allNotifs);
+
         let query = supabase
           .from('notifications')
           .select('*');
@@ -180,9 +197,11 @@ export default function App() {
         // Filter berdasarkan role
         if (userRole === 'manager') {
           // Admin: notifikasi order baru (target_phone = 'manager')
+          console.log('Manager query - filtering by target_phone = manager');
           query = query.eq('target_phone', 'manager');
         } else if (userRole === 'resident' && user?.phone) {
           // Customer: notifikasi untuk nomor mereka saja
+          console.log('Resident query - filtering by target_phone =', user.phone);
           query = query.eq('target_phone', user.phone);
         }
 
@@ -190,7 +209,9 @@ export default function App() {
         console.log('Load notifications - userRole:', userRole, 'user.phone:', user?.phone, 'data:', data, 'error:', error);
         
         if (data && data.length > 0) {
-          setUnreadNotifications(data.length);
+          // Hitung hanya yang belum dibaca (is_read = false)
+          const unreadCount = data.filter((n: any) => !n.is_read).length;
+          setUnreadNotifications(unreadCount);
           setNotificationsList(data.map((n: any) => ({
             id: n.id,
             title: n.type === 'new_order' ? 'Pesanan Baru Masuk!' : 
@@ -249,6 +270,43 @@ export default function App() {
     };
   }, [userRole, user]);
 
+  // Load chat history dari database
+  useEffect(() => {
+    if (!user?.phone) return;
+
+    async function loadChatHistory() {
+      try {
+        const { data, error } = await supabase
+          .from('chat_messages')
+          .select('*')
+          .eq('customer_phone', user.phone)
+          .order('created_at', { ascending: true });
+
+        if (!error && data && data.length > 0) {
+          const formattedMessages = data.map((msg: any) => ({
+            id: msg.id,
+            sender: msg.sender,
+            text: msg.text,
+            timestamp: new Date(msg.created_at).toLocaleTimeString('id-US', { hour: '2-digit', minute: '2-digit' }),
+            image: msg.image || undefined,
+            fileName: msg.file_name || undefined
+          }));
+          
+          // Gabung dengan initial message
+          setChatMessages(prev => {
+            const initialMsg = prev[0];
+            return [initialMsg, ...formattedMessages];
+          });
+          console.log('Chat history loaded:', formattedMessages.length);
+        }
+      } catch (err) {
+        console.error('Error loading chat history:', err);
+      }
+    }
+
+    loadChatHistory();
+  }, [user?.phone]);
+
   // Core Dynamic Chat State representation (Synchronized globally)
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([
     { 
@@ -259,7 +317,7 @@ export default function App() {
     }
   ]);
 
-  const handleCustomerSendMessage = (text: string, image?: string, fileName?: string) => {
+  const handleCustomerSendMessage = async (text: string, image?: string, fileName?: string) => {
     setChatMessages(prev => [
       ...prev,
       {
@@ -271,9 +329,24 @@ export default function App() {
         fileName
       }
     ]);
+
+    // Simpan ke database
+    try {
+      await supabase.from('chat_messages').insert({
+        sender: 'customer',
+        text,
+        customer_phone: user?.phone || '',
+        is_read: false,
+        image: image || null,
+        file_name: fileName || null
+      });
+      console.log('Chat message saved to database');
+    } catch (err) {
+      console.error('Error saving chat message:', err);
+    }
   };
 
-  const handleAdminReplyChatMessage = (text: string) => {
+  const handleAdminReplyChatMessage = async (text: string, customerPhone?: string) => {
     setChatMessages(prev => [
       ...prev,
       {
@@ -283,6 +356,21 @@ export default function App() {
         timestamp: new Date().toLocaleTimeString('id-US', { hour: '2-digit', minute: '2-digit' })
       }
     ]);
+
+    // Simpan admin reply ke database dengan customer phone
+    try {
+      await supabase.from('chat_messages').insert({
+        sender: 'admin',
+        text,
+        customer_phone: customerPhone || user?.phone || '',
+        is_read: false,
+        image: null,
+        file_name: null
+      });
+      console.log('Admin reply saved to database for customer:', customerPhone);
+    } catch (err) {
+      console.error('Error saving admin reply:', err);
+    }
   };
 
   // Flash Sale Friday 08:00 - 20:00 WIB Schedule & Simulation State
@@ -465,17 +553,14 @@ export default function App() {
       });
 
       // Notify all managers about new order
-      const { data: managers } = await supabase.from('residents').select('phone').eq('role', 'manager');
-      if (managers && managers.length > 0) {
-        const notificationInserts = managers.map(manager => ({
-          type: 'new_order',
-          order_id: newOrder.id,
-          target_phone: manager.phone,
-          is_read: false
-        }));
-        await supabase.from('notifications').insert(notificationInserts);
-        console.log('Notification sent to managers:', managers.length);
-      }
+      const notificationInserts = {
+        type: 'new_order',
+        order_id: newOrder.id,
+        target_phone: 'manager',
+        is_read: false
+      };
+      await supabase.from('notifications').insert(notificationInserts);
+      console.log('Notification sent to managers');
     } catch (e) {
       console.error('Supabase error placing order:', e);
     }
@@ -592,6 +677,8 @@ export default function App() {
         is_flash_sale: newProduct.isFlashSale || false,
         original_price: newProduct.originalPrice
       });
+      // Update state instant
+      setProducts(prev => [...prev, newProduct]);
     } catch (e) {
       console.error('Supabase error adding product:', e);
     }
@@ -701,6 +788,10 @@ export default function App() {
     setUserRole(null);
     setScreen(ScreenType.LOGIN);
     setCart([]);
+    setIsAdmin(false);
+    // Clear session dari localStorage
+    localStorage.removeItem('userRole');
+    localStorage.removeItem('userPhone');
   };
 
   const handleLoginSuccess = async (phoneNumber: string, name?: string, block?: string) => {
@@ -721,18 +812,30 @@ export default function App() {
       
       if (data?.role) {
         setUserRole(data.role);
-        setIsAdmin(data.role === 'manager');
+        // Simpan ke localStorage
+        localStorage.setItem('userRole', data.role);
+        localStorage.setItem('userPhone', phoneNumber);
+        
+        // Manager langsung ke admin dashboard
+        if (data.role === 'manager') {
+          setIsAdmin(true);
+          setScreen(ScreenType.HOME);
+        } else {
+          setScreen(ScreenType.HOME);
+        }
       } else {
         setUserRole('resident');
-        setIsAdmin(false);
+        localStorage.setItem('userRole', 'resident');
+        localStorage.setItem('userPhone', phoneNumber);
+        setScreen(ScreenType.HOME);
       }
     } catch (e) {
       console.error('Error fetching role:', e);
       setUserRole('resident');
-      setIsAdmin(false);
+      localStorage.setItem('userRole', 'resident');
+      localStorage.setItem('userPhone', phoneNumber);
+      setScreen(ScreenType.HOME);
     }
-    
-    setScreen(ScreenType.HOME);
   };
 
   // Quick login via WhatsApp number, available from the cart & checkout screens
@@ -801,15 +904,19 @@ export default function App() {
       
       if (data?.role) {
         setUserRole(data.role);
-        setIsAdmin(data.role === 'manager');
+        // Simpan ke localStorage
+        localStorage.setItem('userRole', data.role);
+        localStorage.setItem('userPhone', found.phone);
       } else {
         setUserRole('resident');
-        setIsAdmin(false);
+        localStorage.setItem('userRole', 'resident');
+        localStorage.setItem('userPhone', found.phone);
       }
     } catch (e) {
       console.error('Error fetching role:', e);
       setUserRole('resident');
-      setIsAdmin(false);
+      localStorage.setItem('userRole', 'resident');
+      localStorage.setItem('userPhone', found.phone);
     }
 
     return { success: true };
@@ -1030,6 +1137,8 @@ export default function App() {
                   remindedProductIds={remindedProductIds}
                   onToggleReminder={handleToggleReminder}
                   onBlockedFlashSaleAdd={handleBlockedFlashSaleAdd}
+                  initSearchQuery={new URLSearchParams(window.location.search).get('q') || ''}
+                  initCategory={new URLSearchParams(window.location.search).get('cat') || 'Semua'}
                 />
               )}
 
@@ -1082,7 +1191,11 @@ export default function App() {
                     setActiveOrder(null);
                     setScreen(ScreenType.HOME);
                   }}
-                  onContactCS={() => alert('Menghubungi Tim Layanan Hub KomplekMart... Salam hangat!')}
+                  onContactCS={() => {
+                    const csPhone = '628123456789'; // Nomor CS KomplekMart
+                    const waLink = `https://wa.me/${csPhone}?text=Halo%20KomplekMart%2C%20saya%20ingin%20bertanya%20tentang%20pesanan%20saya`;
+                    window.open(waLink, '_blank');
+                  }}
                 />
               )}
 
@@ -1101,6 +1214,7 @@ export default function App() {
                   }}
                   isLoggedIn={!!user}
                   onQuickLogin={handleQuickLogin}
+                  userRole={userRole}
                 />
               )}
             </>
@@ -1236,6 +1350,7 @@ export default function App() {
           onSendMessage={handleCustomerSendMessage}
           user={user}
           orders={orders}
+          userRole={userRole}
         />
       )}
 

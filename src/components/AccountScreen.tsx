@@ -11,7 +11,8 @@ import {
   Save,
   CheckCircle,
   LogIn,
-  ShoppingBag
+  ShoppingBag,
+  Download
 } from 'lucide-react';
 import { UserProfile, Order } from '../types';
 import QuickLoginCard from './QuickLoginCard';
@@ -24,6 +25,7 @@ interface AccountScreenProps {
   onSwitchScreen: (screen: 'home' | 'cart' | 'account' | 'admin') => void;
   isLoggedIn: boolean;
   onQuickLogin: (phone: string) => Promise<{ success: boolean; message?: string }>;
+  userRole?: string | null;
 }
 
 export default function AccountScreen({
@@ -33,13 +35,33 @@ export default function AccountScreen({
   onLogout,
   onSwitchScreen,
   isLoggedIn,
-  onQuickLogin
+  onQuickLogin,
+  userRole
 }: AccountScreenProps) {
   const [editName, setEditName] = useState(user?.name || '');
   const [editPhone, setEditPhone] = useState(user?.phone || '');
   const [editAddress, setEditAddress] = useState(user?.address || '');
   const [isSavedSuccessfully, setIsSavedSuccessfully] = useState(false);
   const [showRegisterForm, setShowRegisterForm] = useState(false);
+  const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
+  const [isAppInstalled, setIsAppInstalled] = useState(false);
+
+  useEffect(() => {
+    // Check if app is already installed
+    if (window.matchMedia('(display-mode: standalone)').matches) {
+      setIsAppInstalled(true);
+    }
+
+    // Listen for install prompt
+    const handleBeforeInstallPrompt = (e: Event) => {
+      e.preventDefault();
+      setDeferredPrompt(e);
+      setIsAppInstalled(false);
+    };
+
+    window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+    return () => window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+  }, []);
 
   useEffect(() => {
     if (user) {
@@ -48,6 +70,16 @@ export default function AccountScreen({
       setEditAddress(user.address);
     }
   }, [user]);
+
+  const handleInstallApp = async () => {
+    if (!deferredPrompt) return;
+    deferredPrompt.prompt();
+    const { outcome } = await deferredPrompt.userChoice;
+    if (outcome === 'accepted') {
+      setIsAppInstalled(true);
+      setDeferredPrompt(null);
+    }
+  };
 
   const handleSaveChanges = (e: React.FormEvent) => {
     e.preventDefault();
@@ -78,10 +110,12 @@ export default function AccountScreen({
     setTimeout(() => setIsSavedSuccessfully(false), 3000);
   };
 
-  const userOrders = orders.filter(o => 
-    (user && o.customerName.toLowerCase() === user.name.toLowerCase()) || 
-    (user && o.phone === user.phone)
-  );
+  const userOrders = orders
+    .filter(o => 
+      (user && o.customerName.toLowerCase() === user.name.toLowerCase()) || 
+      (user && o.phone === user.phone)
+    )
+    .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
   if (!user) {
     return (
@@ -200,14 +234,16 @@ export default function AccountScreen({
         </div>
 
         <div className="bg-white rounded-2xl overflow-hidden border border-slate-100 shadow-sm">
-          <button 
-            onClick={() => onSwitchScreen('admin')}
-            className="w-full p-4 flex items-center gap-4 hover:bg-orange-50/30 transition-colors text-left cursor-pointer group"
-          >
-            <Sliders className="w-5 h-5 text-[#ff6b00] stroke-[2.5]" />
-            <span className="flex-grow text-sm font-semibold text-slate-700 group-hover:text-slate-950">Dashboard Admin</span>
-            <ChevronRight className="w-5 h-5 text-slate-300 group-hover:translate-x-1 transition-transform" />
-          </button>
+          {userRole === 'manager' && (
+            <button 
+              onClick={() => onSwitchScreen('admin')}
+              className="w-full p-4 flex items-center gap-4 hover:bg-orange-50/30 transition-colors text-left cursor-pointer group"
+            >
+              <Sliders className="w-5 h-5 text-[#ff6b00] stroke-[2.5]" />
+              <span className="flex-grow text-sm font-semibold text-slate-700 group-hover:text-slate-950">Dashboard Admin</span>
+              <ChevronRight className="w-5 h-5 text-slate-300 group-hover:translate-x-1 transition-transform" />
+            </button>
+          )}
         </div>
       </motion.div>
     );
@@ -378,15 +414,17 @@ export default function AccountScreen({
 
       {/* App Action Controls */}
       <section className="bg-white rounded-2xl overflow-hidden border border-slate-100 shadow-sm divide-y divide-slate-50">
-        <button 
-          id="btn_switch_to_admin"
-          onClick={() => onSwitchScreen('admin')}
-          className="w-full p-4 flex items-center gap-4 hover:bg-orange-50/30 transition-colors text-left cursor-pointer group"
-        >
-          <Sliders className="w-5 h-5 text-[#ff6b00] stroke-[2.5]" />
-          <span className="flex-grow text-sm font-semibold text-slate-700 group-hover:text-slate-950">Dashboard Admin</span>
-          <ChevronRight className="w-5 h-5 text-slate-300 group-hover:translate-x-1 transition-transform" />
-        </button>
+        {userRole === 'manager' && (
+          <button 
+            id="btn_switch_to_admin"
+            onClick={() => onSwitchScreen('admin')}
+            className="w-full p-4 flex items-center gap-4 hover:bg-orange-50/30 transition-colors text-left cursor-pointer group"
+          >
+            <Sliders className="w-5 h-5 text-[#ff6b00] stroke-[2.5]" />
+            <span className="flex-grow text-sm font-semibold text-slate-700 group-hover:text-slate-950">Dashboard Admin</span>
+            <ChevronRight className="w-5 h-5 text-slate-300 group-hover:translate-x-1 transition-transform" />
+          </button>
+        )}
 
         <button 
           onClick={onLogout}

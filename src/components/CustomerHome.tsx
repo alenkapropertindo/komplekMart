@@ -22,7 +22,9 @@ import {
   Bell,
   ChevronUp,
   Lock,
-  Info
+  Info,
+  Apple,
+  Copy
 } from 'lucide-react';
 import { Product } from '../types';
 import { getFlashSaleSchedule, FlashSaleTimeInfo } from '../utils/flashSale';
@@ -39,6 +41,8 @@ interface CustomerHomeProps {
   remindedProductIds?: string[];
   onToggleReminder?: (productId: string, productName?: string) => void;
   onBlockedFlashSaleAdd?: () => void;
+  initSearchQuery?: string;
+  initCategory?: string;
 }
 
 export default function CustomerHome({
@@ -52,10 +56,12 @@ export default function CustomerHome({
   onToggleFlashSaleSimulation,
   remindedProductIds = [],
   onToggleReminder,
-  onBlockedFlashSaleAdd
+  onBlockedFlashSaleAdd,
+  initSearchQuery = '',
+  initCategory = 'Semua'
 }: CustomerHomeProps) {
-  const [searchQuery, setSearchQuery] = useState('');
-  const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState(initSearchQuery);
+  const [selectedCategory, setSelectedCategory] = useState<string | null>(initCategory !== 'Semua' ? initCategory : null);
   const [addedAnimationId, setAddedAnimationId] = useState<string | null>(null);
   const [showAllFlashSale, setShowAllFlashSale] = useState(false);
   const [localToast, setLocalToast] = useState<string | null>(null);
@@ -101,16 +107,20 @@ export default function CustomerHome({
     { name: 'Telur', icon: Egg },
     { name: 'Mie Instan', icon: Soup },
     { name: 'Air Mineral', icon: GlassWater },
+    { name: 'Sayur&Buah', icon: Apple },
   ];
 
-  const popularProducts = products.filter(p => p.left !== undefined);
+  const popularProducts = products.filter(p => p.left !== undefined && (p.left ?? 0) > 0);
   const flashSaleProducts = products.filter(p => p.isFlashSale);
   const fastDeliveryProducts = products.filter(p => p.name === 'Air Galon' || p.name === 'Gas 3Kg');
 
   const filteredProducts = products.filter((p) => {
-    const matchesSearch = p.name.toLowerCase().includes(searchQuery.toLowerCase());
+    const searchNormalized = searchQuery.toLowerCase().replace(/\s+/g, '');
+    const nameNormalized = p.name.toLowerCase().replace(/\s+/g, '');
+    const matchesSearch = nameNormalized.includes(searchNormalized) || p.name.toLowerCase().includes(searchQuery.toLowerCase());
     const matchesCategory = selectedCategory ? p.category === selectedCategory : true;
-    return matchesSearch && matchesCategory;
+    const hasStock = (p.left ?? 0) > 0;
+    return matchesSearch && matchesCategory && hasStock;
   });
 
   const handleQuickAdd = (e: React.MouseEvent, product: Product) => {
@@ -191,7 +201,7 @@ export default function CustomerHome({
               </div>
               <div>
                 <h3 className="text-sm font-black text-slate-800 tracking-tight leading-none">Antar Cepat Kompleks</h3>
-                <span className="text-[10px] font-bold text-slate-500">Estimasi 10-15 Menit Sampai!</span>
+                <span className="text-[10px] font-bold text-slate-500">Estimasi 5-10 Menit Sampai!</span>
               </div>
             </div>
             <span className="text-[9px] font-black uppercase tracking-wider text-[#ff6b00] bg-orange-100/50 px-2.5 py-1 rounded-full border border-orange-200/50">
@@ -587,8 +597,40 @@ export default function CustomerHome({
       {/* Products list header */}
       <section className="mb-6">
         <div className="flex items-center justify-between mb-4">
-          <h3 className="text-lg font-bold text-slate-800">Produk Terpopuler</h3>
-          <span className="text-xs font-bold text-[#ff6b00] cursor-pointer hover:underline">Lihat Semua</span>
+          <h3 className="text-lg font-bold text-slate-800">Katalog Produk</h3>
+        </div>
+
+        {/* Search + Filter + Share */}
+        <div className="flex flex-col gap-3 mb-4">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+            <input
+              type="text"
+              placeholder="Cari produk (misal: Gas 3kg)..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 outline-none focus:border-[#ff6b00]"
+            />
+          </div>
+
+          {/* Share Link Button */}
+          {(searchQuery || selectedCategory !== 'Semua') && (
+            <button
+              onClick={() => {
+                const params = new URLSearchParams();
+                if (searchQuery) params.append('q', searchQuery);
+                if (selectedCategory !== 'Semua') params.append('cat', selectedCategory);
+                const shareUrl = `${window.location.origin}${window.location.pathname}?${params.toString()}`;
+                
+                navigator.clipboard.writeText(shareUrl);
+                alert('Link disalin ke clipboard! Sekarang bisa dibagikan.');
+              }}
+              className="flex items-center gap-2 px-4 py-2.5 bg-[#ff6b00] hover:bg-[#e05e00] text-white rounded-xl text-xs font-bold transition-all cursor-pointer"
+            >
+              <Copy className="w-3.5 h-3.5" />
+              Salin Link Katalog
+            </button>
+          )}
         </div>
 
         {filteredProducts.length === 0 ? (
@@ -630,6 +672,9 @@ export default function CustomerHome({
                     </span>
                     <span className="text-sm font-bold text-slate-800 leading-snug truncate mt-0.5">
                       {p.name}
+                    </span>
+                    <span className="text-[10px] font-semibold text-slate-500 mt-0.5">
+                      {p.unit}
                     </span>
                     <span className="text-base font-extrabold text-[#006e2f] mt-1">
                       Rp {p.price.toLocaleString('id-ID')}

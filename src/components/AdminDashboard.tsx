@@ -43,7 +43,7 @@ interface AdminDashboardProps {
   onAddNewProduct: (newProduct: Product) => void;
   onAddStockAlert: (index: number, newStock: number) => void;
   chatMessages: ChatMessage[];
-  onAdminReplyChat: (text: string) => void;
+  onAdminReplyChat: (text: string, customerPhone?: string) => void;
   customerName: string;
   onDeleteProduct?: (productId: string) => void;
   onUpdateProductStock?: (productId: string, newStock: number) => void;
@@ -80,11 +80,11 @@ export default function AdminDashboard({
   // Local state triggers for Admin Modals
   const [showAddProductModal, setShowAddProductModal] = useState(false);
   const [showFlashSaleModal, setShowFlashSaleModal] = useState(false);
-  const [showSupportModal, setShowSupportModal] = useState(false);
 
   // Dynamic search and filters
   const [productSearch, setProductSearch] = useState('');
   const [productCategoryFilter, setProductCategoryFilter] = useState('Semua');
+  const [showMinimStockOnly, setShowMinimStockOnly] = useState(false);
   const [orderSearch, setOrderSearch] = useState('');
   const [orderStatusFilter, setOrderStatusFilter] = useState('Semua');
   const [residentSearch, setResidentSearch] = useState('');
@@ -97,6 +97,53 @@ export default function AdminDashboard({
   // Dynamic live Customer chatting state
   const [selectedChatUser, setSelectedChatUser] = useState<string | null>(null);
   const [adminReplyText, setAdminReplyText] = useState('');
+  const [supportConversations, setSupportConversations] = useState<any[]>([]);
+  const [selectedChatHistory, setSelectedChatHistory] = useState<ChatMessage[]>([]);
+
+  // Load chat history saat admin select customer
+  React.useEffect(() => {
+    if (!selectedChatUser || supportConversations.length === 0) return;
+
+    async function loadSelectedChatHistory() {
+      try {
+        // Cari customer phone dari selectedChatUser di supportConversations
+        const customer = supportConversations.find(c => c.customer === selectedChatUser);
+        if (!customer?.phone) {
+          console.log('Customer phone not found for:', selectedChatUser);
+          return;
+        }
+
+        console.log('Loading chat for:', selectedChatUser, 'phone:', customer.phone);
+        
+        const { data, error } = await supabase
+          .from('chat_messages')
+          .select('*')
+          .eq('customer_phone', customer.phone)
+          .order('created_at', { ascending: true });
+
+        if (!error && data) {
+          const formatted = data.map((msg: any) => ({
+            id: msg.id,
+            sender: msg.sender,
+            text: msg.text,
+            timestamp: new Date(msg.created_at).toLocaleTimeString('id-US', { hour: '2-digit', minute: '2-digit' }),
+            image: msg.image || undefined,
+            fileName: msg.file_name || undefined
+          }));
+          setSelectedChatHistory(formatted);
+          console.log('Selected chat history loaded:', formatted.length, 'messages');
+        } else {
+          console.error('Error loading chat:', error);
+          setSelectedChatHistory([]);
+        }
+      } catch (err) {
+        console.error('Error loading selected chat history:', err);
+        setSelectedChatHistory([]);
+      }
+    }
+
+    loadSelectedChatHistory();
+  }, [selectedChatUser, supportConversations]);
 
   // New product form states
   const [newProdName, setNewProdName] = useState('');
@@ -112,13 +159,6 @@ export default function AdminDashboard({
   // Flash sale form states
   const [selectedDiscountProduct, setSelectedDiscountProduct] = useState('');
   const [discountPercent, setDiscountPercent] = useState('15');
-
-  // Support list simulations
-  const supportConversations = useMemo(() => [
-    { customer: 'Rudi Santoso', block: 'B4 No.12', msg: 'Mas, pesanan air mineral galon saya belum sampai ya?', time: '2 mins ago' },
-    { customer: 'Ani Wijaya', block: 'C2 No.5', msg: 'Telur ayamnya pecah satu pas diantar tadi, boleh minta ganti?', time: '10 mins ago' },
-    { customer: 'Dewi Lestari', block: 'A1 No.2', msg: 'Terimakasih beras wangi pandannya pulen sekali!', time: '1 hour ago' }
-  ], []);
 
   // Compute stats dynamically
   const stats = useMemo(() => {
@@ -216,9 +256,10 @@ export default function AdminDashboard({
       const matchSearch = p.name.toLowerCase().includes(productSearch.toLowerCase()) || 
                           p.category.toLowerCase().includes(productSearch.toLowerCase());
       const matchCategory = productCategoryFilter === 'Semua' || p.category === productCategoryFilter;
-      return matchSearch && matchCategory;
+      const matchStockFilter = !showMinimStockOnly || (p.left ?? 0) <= 5;
+      return matchSearch && matchCategory && matchStockFilter;
     });
-  }, [products, productSearch, productCategoryFilter]);
+  }, [products, productSearch, productCategoryFilter, showMinimStockOnly]);
 
   // Filter orders list based on status tab and customer name search
   const filteredOrders = useMemo(() => {
@@ -339,7 +380,10 @@ export default function AdminDashboard({
             <div className="space-y-8">
               {/* Stats Bento Grid */}
               <section className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-                <div className="p-5 bg-white border border-slate-100 rounded-3xl shadow-sm flex flex-col gap-1.5 hover:border-[#ff6b00] transition-all">
+                <button 
+                  onClick={() => setActiveTab('orders')}
+                  className="p-5 bg-white border border-slate-100 rounded-3xl shadow-sm flex flex-col gap-1.5 hover:border-[#ff6b00] transition-all cursor-pointer text-left"
+                >
                   <span className="text-[10px] font-extrabold uppercase tracking-wide text-slate-400">Pemasukan Selesai</span>
                   <div className="flex items-end justify-between">
                     <span className="text-xl font-black text-slate-800">Rp {stats.revenue.toLocaleString('id-ID')}</span>
@@ -350,9 +394,12 @@ export default function AdminDashboard({
                   <div className="w-full h-1 bg-slate-100 mt-2 rounded-full overflow-hidden">
                     <div className="h-full bg-emerald-500" style={{ width: '82%' }} />
                   </div>
-                </div>
+                </button>
 
-                <div className="p-5 bg-white border border-slate-100 rounded-3xl shadow-sm flex flex-col gap-1.5 hover:border-[#ff6b00] transition-all">
+                <button 
+                  onClick={() => setActiveTab('orders')}
+                  className="p-5 bg-white border border-slate-100 rounded-3xl shadow-sm flex flex-col gap-1.5 hover:border-[#ff6b00] transition-all cursor-pointer text-left"
+                >
                   <span className="text-[10px] font-extrabold uppercase tracking-wide text-slate-400">Total Transaksi</span>
                   <div className="flex items-end justify-between">
                     <span className="text-xl font-black text-slate-800">{stats.totalOrders} Pesanan</span>
@@ -363,9 +410,15 @@ export default function AdminDashboard({
                   <div className="w-full h-1 bg-slate-100 mt-2 rounded-full overflow-hidden">
                     <div className="h-full bg-blue-500" style={{ width: '70%' }} />
                   </div>
-                </div>
+                </button>
 
-                <div className="p-5 bg-white border border-slate-100 rounded-3xl shadow-sm flex flex-col gap-1.5 hover:border-[#ff6b00] transition-all">
+                <button 
+                  onClick={() => {
+                    setActiveTab('orders');
+                    setOrderStatusFilter('Diantar');
+                  }}
+                  className="p-5 bg-white border border-slate-100 rounded-3xl shadow-sm flex flex-col gap-1.5 hover:border-[#ff6b00] transition-all cursor-pointer text-left"
+                >
                   <span className="text-[10px] font-extrabold uppercase tracking-wide text-slate-400">Pesanan Diproses</span>
                   <div className="flex items-end justify-between">
                     <span className="text-xl font-black text-amber-600">{stats.pendingCount} Antrean</span>
@@ -376,9 +429,15 @@ export default function AdminDashboard({
                   <div className="w-full h-1 bg-slate-100 mt-2 rounded-full overflow-hidden">
                     <div className="h-full bg-amber-500" style={{ width: '45%' }} />
                   </div>
-                </div>
+                </button>
 
-                <div className="p-5 bg-white border border-slate-100 rounded-3xl shadow-sm flex flex-col gap-1.5 hover:border-[#ff6b00] transition-all">
+                <button 
+                  onClick={() => {
+                    setActiveTab('products');
+                    setShowMinimStockOnly(true);
+                  }}
+                  className="p-5 bg-white border border-[#ff6b00] rounded-3xl shadow-sm flex flex-col gap-1.5 hover:border-[#ff6b00] transition-all cursor-pointer text-left"
+                >
                   <span className="text-[10px] font-extrabold uppercase tracking-wide text-slate-400">Minim Stok (&lt;=5)</span>
                   <div className="flex items-end justify-between">
                     <span className="text-xl font-black text-rose-600">{stats.lowStockCount} Produk</span>
@@ -389,7 +448,7 @@ export default function AdminDashboard({
                   <div className="w-full h-1 bg-slate-100 mt-2 rounded-full overflow-hidden">
                     <div className="h-full bg-rose-500" style={{ width: '30%' }} />
                   </div>
-                </div>
+                </button>
               </section>
 
               {/* Bento Row Split */}
@@ -408,7 +467,14 @@ export default function AdminDashboard({
                   </div>
 
                   <div className="space-y-3.5 max-h-[350px] overflow-y-auto pr-1">
-                    {orders.slice(0, 4).map((ord) => (
+                    {orders
+                      .sort((a, b) => {
+                        if (a.status === 'Selesai' && b.status !== 'Selesai') return 1;
+                        if (a.status !== 'Selesai' && b.status === 'Selesai') return -1;
+                        return 0;
+                      })
+                      .slice(0, 4)
+                      .map((ord) => (
                       <div 
                         key={ord.id}
                         className="p-4 bg-slate-50 border border-slate-100 rounded-2xl flex flex-col sm:flex-row items-start sm:items-center justify-between hover:border-slate-200 transition-all gap-3"
@@ -565,18 +631,6 @@ export default function AdminDashboard({
                   </div>
                 </div>
 
-                <div 
-                  onClick={() => setShowSupportModal(true)}
-                  className="bg-white p-6 border border-slate-100 rounded-3xl hover:border-blue-500 group cursor-pointer transition-all flex items-center gap-4 shadow-sm"
-                >
-                  <div className="w-12 h-12 bg-blue-50 text-blue-600 rounded-2xl flex items-center justify-center group-hover:scale-110 transition-transform">
-                    <Users className="w-6 h-6 stroke-[2.3]" />
-                  </div>
-                  <div>
-                    <h4 className="text-sm font-black text-slate-800">Komplek Support Chat</h4>
-                    <p className="text-[10px] text-slate-400 font-semibold mt-0.5">Verifikasi transfer &amp; balas chat warga</p>
-                  </div>
-                </div>
               </section>
             </div>
           )}
@@ -616,7 +670,7 @@ export default function AdminDashboard({
 
                 {/* Category selectors */}
                 <div className="flex flex-wrap gap-1.5">
-                  {['Semua', 'Beras', 'Telur', 'Minyak', 'Mie Instan', 'Sayuran'].map((cat) => (
+                  {['Semua', 'Beras', 'Telur', 'Minyak', 'Mie Instan', 'Sayur&Buah'].map((cat) => (
                     <button
                       key={cat}
                       onClick={() => setProductCategoryFilter(cat)}
@@ -630,6 +684,18 @@ export default function AdminDashboard({
                     </button>
                   ))}
                 </div>
+
+                {/* Stock Filter Toggle */}
+                <button
+                  onClick={() => setShowMinimStockOnly(!showMinimStockOnly)}
+                  className={`px-4 py-2 rounded-xl text-xs font-bold transition-all ${
+                    showMinimStockOnly
+                      ? 'bg-rose-500 text-white'
+                      : 'bg-slate-100 text-slate-500 hover:text-slate-700 hover:bg-slate-200'
+                  }`}
+                >
+                  Stok Minim (≤5)
+                </button>
               </div>
 
               {/* Products Table/Grid list */}
@@ -1006,17 +1072,6 @@ export default function AdminDashboard({
                         }`}>
                           {res.status}
                         </span>
-
-                        <button
-                          onClick={() => {
-                            setSelectedChatUser(res.name);
-                            setShowSupportModal(true);
-                          }}
-                          className="flex items-center gap-1 text-[10px] font-black text-[#ff6b00] hover:underline"
-                        >
-                          <MessageSquare className="w-3.5 h-3.5" />
-                          <span>Mulai Chat</span>
-                        </button>
                       </div>
 
                     </div>
@@ -1075,7 +1130,7 @@ export default function AdminDashboard({
                       <option value="Minyak">Minyak</option>
                       <option value="Telur">Telur</option>
                       <option value="Mie Instan">Mie Instan</option>
-                      <option value="Sayuran">Sayuran</option>
+                      <option value="Sayur&Buah">Sayur&Buah</option>
                       <option value="Lainnya">+ Tambah Kategori Baru</option>
                     </select>
                     {isCustomCategory && (
@@ -1160,219 +1215,6 @@ export default function AdminDashboard({
           </div>
         )}
 
-        {/* SUPPORT / CUSTOMER CHAT MODAL */}
-        {showSupportModal && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm">
-            <motion.div 
-              initial={{ scale: 0.95, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.95, opacity: 0 }}
-              className="bg-white rounded-3xl border border-slate-100 p-6 max-w-lg w-full h-[525px] shadow-2xl flex flex-col justify-between"
-            >
-              {/* HEADER WITH TOGGLE TO BACK */}
-              <div className="flex justify-between items-center pb-3 border-b border-slate-100 flex-shrink-0">
-                <div className="flex items-center gap-2">
-                  {selectedChatUser && (
-                    <button 
-                      onClick={() => setSelectedChatUser(null)} 
-                      className="p-1 hover:bg-slate-100 rounded-lg text-slate-500 mr-1"
-                    >
-                      <ArrowLeft className="w-4 h-4 stroke-[2.5]" />
-                    </button>
-                  )}
-                  <div className="flex items-center gap-1.5">
-                    <Users className="w-5 h-5 text-blue-600" />
-                    <span className="text-sm font-black text-slate-800">
-                      {selectedChatUser ? `Chat dengan ${selectedChatUser}` : 'Komplek Customer Support'}
-                    </span>
-                  </div>
-                </div>
-                <button 
-                  onClick={() => {
-                    setShowSupportModal(false);
-                    setSelectedChatUser(null);
-                  }} 
-                  className="text-slate-400 hover:text-slate-600 p-1.5 rounded-full hover:bg-slate-105"
-                >
-                  <X className="w-5 h-5" />
-                </button>
-              </div>
-
-              {/* MODAL WORKSPACE - LIST OF USERS VS ACTIVE LIVE CHAT LOG */}
-              <div className="flex-grow overflow-y-auto my-3 min-h-0 space-y-3 pr-1">
-                {!selectedChatUser ? (
-                  // USER SELECTION LIST VERSION
-                  <div className="space-y-3">
-                    {/* Dynamic Real Active Customer Chat Row */}
-                    <div 
-                      onClick={() => setSelectedChatUser(customerName)}
-                      className="p-4 bg-orange-50/50 border-2 border-orange-200 rounded-2xl flex flex-col gap-1 hover:bg-orange-50 hover:border-orange-300 transition-all cursor-pointer relative"
-                    >
-                      <span className="absolute top-4 right-4 flex items-center gap-1 bg-emerald-500 text-white text-[8px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full shadow-sm animate-pulse">
-                        ● LIVE CHAT
-                      </span>
-                      <div className="flex justify-between items-center">
-                        <span className="text-xs font-black text-slate-800">{customerName} (Warga)</span>
-                        <span className="text-[10px] text-slate-400 font-bold">Sekarang</span>
-                      </div>
-                      <p className="text-xs font-semibold text-slate-500 mt-1 truncate max-w-[85%]">
-                        {chatMessages[chatMessages.length - 1]?.text || "Mulai percakapan dengan warga kompleks"}
-                      </p>
-                      
-                      {/* Badge if receipt uploaded */}
-                      {chatMessages.some(m => m.image) && (
-                        <span className="text-[9px] font-black text-emerald-600 flex items-center gap-1 mt-1 bg-emerald-50 w-max px-2 py-0.5 rounded-lg border border-emerald-100">
-                          📎 ADA BUKTI TRANSFER
-                        </span>
-                      )}
-
-                      <button 
-                        className="mt-2 text-[10px] font-black text-[#ff6b00] hover:underline flex justify-end gap-1 items-center self-end"
-                      >
-                        Masuk Obrolan Live
-                        <ChevronRight className="w-3.5 h-3.5 stroke-[2.5]" />
-                      </button>
-                    </div>
-
-                    {/* Passive/Mock Citizen chat rows */}
-                    {supportConversations.map((chat, idx) => (
-                      <div 
-                        key={idx} 
-                        onClick={() => setSelectedChatUser(chat.customer)}
-                        className="p-4 bg-slate-50 border border-slate-150 rounded-2xl flex flex-col gap-1 hover:border-blue-300 transition-colors cursor-pointer"
-                      >
-                        <div className="flex justify-between items-center">
-                          <span className="text-xs font-bold text-slate-700">{chat.customer} ({chat.block})</span>
-                          <span className="text-[10px] text-slate-400 font-bold">{chat.time}</span>
-                        </div>
-                        <p className="text-xs font-medium text-slate-500 mt-1 italic">
-                          "{chat.msg}"
-                        </p>
-                        <button 
-                          className="mt-2 text-[10px] font-bold text-blue-600 hover:underline flex justify-end gap-1 items-center self-end"
-                        >
-                          Balas Chat
-                          <ChevronRight className="w-3" />
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                ) : selectedChatUser === customerName ? (
-                  // ACTIVE CUSTOMER LIVE CHAT WINDOW INNER DYNAMIC
-                  <div className="flex flex-col h-full justify-between">
-                    <div className="flex-grow overflow-y-auto space-y-3 p-2 bg-slate-50 rounded-2xl border border-slate-100 max-h-[290px]">
-                      {chatMessages.map(msg => {
-                        const isAdminMsg = msg.sender === 'admin';
-                        return (
-                          <div 
-                            key={msg.id} 
-                            className={`flex flex-col max-w-[80%] ${isAdminMsg ? 'self-end ml-auto items-end' : 'self-start mr-auto items-start'}`}
-                          >
-                            <span className="text-[9px] text-slate-400 font-black mb-1">
-                              {isAdminMsg ? 'Anda (Admin)' : customerName}
-                            </span>
-                            <div className={`p-2.5 rounded-xl text-xs font-medium ${
-                              isAdminMsg 
-                                ? 'bg-[#ff6b00] text-white rounded-tr-none' 
-                                : 'bg-white text-slate-800 border border-slate-150 rounded-tl-none'
-                            }`}>
-                              {msg.text}
-
-                              {/* Show proof image if sent */}
-                              {msg.image && (
-                                <div className="mt-2 rounded-lg bg-slate-100 border p-1 max-w-[150px]">
-                                  <img 
-                                    src={msg.image} 
-                                    alt={msg.fileName} 
-                                    className="w-full h-auto object-cover rounded"
-                                    referrerPolicy="no-referrer"
-                                  />
-                                  <span className="text-[8px] font-black text-slate-500 mt-1 block truncate">
-                                    {msg.fileName}
-                                  </span>
-                                </div>
-                              )}
-                            </div>
-                            <span className="text-[8px] text-slate-400 font-bold mt-1">
-                              {msg.timestamp}
-                            </span>
-                          </div>
-                        );
-                      })}
-                    </div>
-
-                    {/* REPLY INPUT FIELD */}
-                    <div className="pt-3 border-t border-slate-100 mt-3 flex-shrink-0 flex gap-2 animate-fadeIn">
-                      <input 
-                        type="text" 
-                        value={adminReplyText}
-                        onChange={(e) => setAdminReplyText(e.target.value)}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter') {
-                            if (!adminReplyText.trim()) return;
-                            onAdminReplyChat(adminReplyText);
-                            setAdminReplyText('');
-                          }
-                        }}
-                        placeholder={`Tulis balasan koordinasi untuk warga ${customerName}...`}
-                        className="flex-grow p-2.5 text-xs bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-800 focus:border-[#ff6b00]/50 outline-none"
-                      />
-                      <button 
-                        onClick={() => {
-                          if (!adminReplyText.trim()) return;
-                          onAdminReplyChat(adminReplyText);
-                          setAdminReplyText('');
-                        }}
-                        className="p-2.5 bg-[#ff6b00] text-white rounded-xl shadow-sm hover:bg-[#e05e00] flex items-center justify-center font-bold"
-                      >
-                        <Send className="w-4 h-4" />
-                      </button>
-                    </div>
-                  </div>
-                ) : (
-                  // SIMULATED STATIC CHAT LOG WINDOW FOR Rudi, Ani, or Dewi
-                  <div className="flex flex-col h-full justify-between">
-                    <div className="flex-grow overflow-y-auto space-y-3 p-2 bg-slate-50 rounded-2xl border border-slate-100 max-h-[290px]">
-                      <div className="flex flex-col max-w-[80%] self-start mr-auto items-start">
-                        <span className="text-[9px] text-slate-400 font-black mb-1">{selectedChatUser}</span>
-                        <div className="p-2.5 rounded-xl text-xs font-medium bg-white text-slate-800 border border-slate-150 rounded-tl-none">
-                          {supportConversations.find(c => c.customer === selectedChatUser)?.msg || "Mas, tolong diproses ya."}
-                        </div>
-                        <span className="text-[8px] text-slate-400 font-bold mt-1">
-                          {supportConversations.find(c => c.customer === selectedChatUser)?.time}
-                        </span>
-                      </div>
-                    </div>
-
-                    {/* MOCK REPLY CHAT */}
-                    <div className="pt-3 border-t border-slate-100 mt-3 flex-shrink-0 flex gap-2">
-                      <input 
-                        type="text" 
-                        placeholder={`Tulis pesan koordinasi untuk ${selectedChatUser}...`}
-                        className="flex-grow p-2.5 text-xs bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-800 outline-none"
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter') {
-                            alert(`Simulasi Balasan Berhasil Terkirim ke ${selectedChatUser}`);
-                            setSelectedChatUser(null);
-                          }
-                        }}
-                      />
-                      <button 
-                        onClick={() => {
-                          alert(`Simulasi Balasan Berhasil Terkirim ke ${selectedChatUser}`);
-                          setSelectedChatUser(null);
-                        }}
-                        className="p-2.5 bg-[#ff6b00] text-white rounded-xl shadow-sm hover:bg-[#e05e00] flex items-center justify-center font-bold"
-                      >
-                        <Send className="w-4 h-4" />
-                      </button>
-                    </div>
-                  </div>
-                )}
-              </div>
-            </motion.div>
-          </div>
-        )}
       </AnimatePresence>
 
     </motion.div>

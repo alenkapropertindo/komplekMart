@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { motion } from 'motion/react';
+import { motion, AnimatePresence } from 'motion/react';
 import { 
   ShoppingBag, 
   Plus, 
@@ -9,7 +9,8 @@ import {
   Trash2,
   CreditCard,
   User,
-  Phone
+  Phone,
+  X
 } from 'lucide-react';
 import { CartItem } from '../types';
 import QuickLoginCard from './QuickLoginCard';
@@ -52,18 +53,21 @@ export default function CartScreen({
   const [phone, setPhone] = useState(defaultPhone);
   const [paymentMethod, setPaymentMethod] = useState('cod');
   const [isOrdering, setIsOrdering] = useState(false);
-  const [showRegisterForm, setShowRegisterForm] = useState(true);
+  const [showDeliveryModal, setShowDeliveryModal] = useState(!isLoggedIn);
 
-  // Keep the delivery fields in sync once the customer signs in
   useEffect(() => {
-    if (!isLoggedIn) return;
-    if (defaultUserName) setName(defaultUserName);
-    if (defaultPhone) setPhone(defaultPhone);
-    if (defaultAddress) setAddress(defaultAddress);
+    if (isLoggedIn) {
+      setShowDeliveryModal(false);
+      if (defaultUserName) setName(defaultUserName);
+      if (defaultPhone) setPhone(defaultPhone);
+      if (defaultAddress) setAddress(defaultAddress);
+    } else {
+      setShowDeliveryModal(true);
+    }
   }, [isLoggedIn, defaultUserName, defaultPhone, defaultAddress]);
 
   const subtotal = cartItems.reduce((acc, item) => acc + (item.product.price * item.quantity), 0);
-  const deliveryFee = 0; // Gratis ongkir untuk semua pesanan
+  const deliveryFee = 0;
   const total = subtotal;
 
   const handleSubmitOrder = (e: React.FormEvent) => {
@@ -200,135 +204,136 @@ export default function CartScreen({
             ))}
           </div>
 
-          {/* Quick login or form toggle */}
-          {!showRegisterForm ? (
-            <div className="space-y-4">
-              <QuickLoginCard
-                isLoggedIn={isLoggedIn}
-                userName={defaultUserName}
-                userPhone={defaultPhone}
-                onLogin={onQuickLogin}
-              />
-              
-              <button 
-                type="button"
-                onClick={() => setShowRegisterForm(true)}
-                className="w-full bg-slate-100 hover:bg-slate-150 text-slate-700 py-3 px-4 rounded-2xl font-bold text-xs active:scale-[0.98] transition-all cursor-pointer"
-              >
-                Belum punya akun? Isi Data Manual
-              </button>
-            </div>
-          ) : (
-            <>
-              {/* Customer & Delivery Form on Cart Page */}
-              <section className="bg-white p-6 rounded-3xl shadow-sm border border-slate-100 space-y-4">
-                <div className="flex items-center gap-2 pb-2 border-b border-slate-50">
-                  <MapPin className="w-5 h-5 text-[#ff6b00]" />
-                  <h2 className="text-base font-bold text-slate-800">Informasi Pengiriman &amp; Akun</h2>
-                </div>
-
-                <div className="space-y-4">
-                  <div className="space-y-1">
-                    <label className="text-xs font-bold text-slate-500 ml-1">Nama Lengkap</label>
-                    <div className="relative">
-                      <span className="absolute inset-y-0 left-0 pl-3 flex items-center text-slate-400">
-                        <User className="w-4 h-4" />
-                      </span>
-                      <input 
-                        className="w-full pl-10 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 outline-none focus:border-[#ff6b00]" 
-                        value={name}
-                        onChange={(e) => setName(e.target.value)}
-                        placeholder="Contoh: Budi Santoso" 
-                        type="text"
-                        required
-                      />
+          {/* Info Pengiriman Modal - Show saat belum login */}
+          <AnimatePresence>
+            {!isLoggedIn && (
+              <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm">
+                <motion.div 
+                  initial={{ scale: 0.95, opacity: 0 }}
+                  animate={{ scale: 1, opacity: 1 }}
+                  exit={{ scale: 0.95, opacity: 0 }}
+                  className="bg-white rounded-3xl border border-slate-100 p-6 max-w-md w-full shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto"
+                >
+                  <div className="flex justify-between items-center pb-3 border-b border-slate-100">
+                    <div className="flex items-center gap-2">
+                      <MapPin className="w-5 h-5 text-[#ff6b00]" />
+                      <h2 className="text-base font-bold text-slate-800">Informasi Pengiriman &amp; Akun</h2>
                     </div>
                   </div>
 
-                  <div className="space-y-1">
-                    <label className="text-xs font-bold text-slate-500 ml-1">No. WhatsApp</label>
-                    <div className="relative">
-                      <span className="absolute inset-y-0 left-0 pl-3 flex items-center text-slate-400">
-                        <Phone className="w-4 h-4" />
-                      </span>
-                      <input 
-                        className="w-full pl-10 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 outline-none focus:border-[#ff6b00]" 
-                        value={phone}
-                        onChange={(e) => setPhone(e.target.value)}
-                        placeholder="Contoh: 08123456789" 
-                        type="text"
+                  <div className="space-y-4">
+                    <div className="space-y-1">
+                      <label className="text-xs font-bold text-slate-500 ml-1">Nama Lengkap</label>
+                      <div className="relative">
+                        <span className="absolute inset-y-0 left-0 pl-3 flex items-center text-slate-400">
+                          <User className="w-4 h-4" />
+                        </span>
+                        <input 
+                          className="w-full pl-10 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 outline-none focus:border-[#ff6b00]" 
+                          value={name}
+                          onChange={(e) => setName(e.target.value)}
+                          placeholder="Contoh: Budi Santoso" 
+                          type="text"
+                          required
+                        />
+                      </div>
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-xs font-bold text-slate-500 ml-1">No. WhatsApp</label>
+                      <div className="relative">
+                        <span className="absolute inset-y-0 left-0 pl-3 flex items-center text-slate-400">
+                          <Phone className="w-4 h-4" />
+                        </span>
+                        <input 
+                          className="w-full pl-10 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 outline-none focus:border-[#ff6b00]" 
+                          value={phone}
+                          onChange={(e) => setPhone(e.target.value)}
+                          placeholder="Contoh: 08123456789" 
+                          type="text"
+                          required
+                        />
+                      </div>
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-xs font-bold text-slate-500 ml-1">Alamat / Blok Pengiriman</label>
+                      <textarea 
+                        className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs font-bold text-slate-800 outline-none focus:border-[#ff6b00] resize-none" 
+                        value={address}
+                        onChange={(e) => setAddress(e.target.value)}
+                        placeholder="Contoh: Komplek Hijau Blok C4 No. 12" 
+                        rows={2}
                         required
                       />
                     </div>
-                  </div>
 
-                  <div className="space-y-1">
-                    <label className="text-xs font-bold text-slate-500 ml-1">Alamat / Blok Pengiriman</label>
-                    <textarea 
-                      className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs font-bold text-slate-800 outline-none focus:border-[#ff6b00] resize-none" 
-                      value={address}
-                      onChange={(e) => setAddress(e.target.value)}
-                      placeholder="Contoh: Komplek Hijau Blok C4 No. 12" 
-                      rows={2}
-                      required
-                    />
-                  </div>
-
-                  <div className="text-center pt-2">
-                    <button 
+                    <button
                       type="button"
-                      onClick={() => setShowRegisterForm(false)}
-                      className="text-[#ff6b00] font-bold text-sm border-b-2 border-[#ff6b00] hover:text-[#e05e00] hover:border-[#e05e00] transition-colors cursor-pointer bg-transparent inline-block"
+                      onClick={() => setShowDeliveryModal(false)}
+                      className="w-full py-3 bg-[#ff6b00] hover:bg-[#e05e00] text-white rounded-xl font-bold text-xs transition-all cursor-pointer"
                     >
-                      Sudah punya akun? Masuk disini
+                      Lanjut ke Pembayaran
                     </button>
+
+                    <div className="border-t border-slate-100 pt-3">
+                      <p className="text-[10px] font-bold text-slate-500 mb-3 text-center">Atau masuk dengan akun terdaftar</p>
+                      <QuickLoginCard
+                        isLoggedIn={isLoggedIn}
+                        userName={defaultUserName}
+                        userPhone={defaultPhone}
+                        onLogin={onQuickLogin}
+                      />
+                    </div>
                   </div>
-                </div>
-              </section>
-            </>
-          )}
+                </motion.div>
+              </div>
+            )}
+          </AnimatePresence>
 
-          {/* Payment Method Section */}
-          <section className="bg-white p-6 rounded-3xl shadow-sm border border-slate-100 space-y-4">
-            <div className="flex items-center gap-2 pb-2 border-b border-slate-50">
-              <CreditCard className="w-5 h-5 text-[#ff6b00]" />
-              <h2 className="text-base font-bold text-slate-800">Metode Pembayaran</h2>
-            </div>
+          {/* Payment Method Section - Only show saat sudah login atau form closed */}
+          {isLoggedIn || !showDeliveryModal ? (
+            <section className="bg-white p-6 rounded-3xl shadow-sm border border-slate-100 space-y-4">
+              <div className="flex items-center gap-2 pb-2 border-b border-slate-50">
+                <CreditCard className="w-5 h-5 text-[#ff6b00]" />
+                <h2 className="text-base font-bold text-slate-800">Metode Pembayaran</h2>
+              </div>
 
-            <div className="grid grid-cols-2 gap-3">
-              <label className={`flex items-center gap-3 p-3.5 border-2 rounded-2xl cursor-pointer transition-all ${
-                paymentMethod === 'cod' ? 'border-[#ff6b00] bg-orange-50/30' : 'border-slate-150 bg-white'
-              }`}>
-                <input 
-                  type="radio" 
-                  name="payment" 
-                  checked={paymentMethod === 'cod'} 
-                  onChange={() => setPaymentMethod('cod')}
-                  className="accent-[#ff6b00]"
-                />
-                <div>
-                  <p className="text-xs font-bold text-slate-800">COD (Bayar di Tempat)</p>
-                  <p className="text-[10px] text-slate-400 font-semibold">Bayar saat kurir tiba</p>
-                </div>
-              </label>
+              <div className="grid grid-cols-2 gap-3">
+                <label className={`flex items-center gap-3 p-3.5 border-2 rounded-2xl cursor-pointer transition-all ${
+                  paymentMethod === 'cod' ? 'border-[#ff6b00] bg-orange-50/30' : 'border-slate-150 bg-white'
+                }`}>
+                  <input 
+                    type="radio" 
+                    name="payment" 
+                    checked={paymentMethod === 'cod'} 
+                    onChange={() => setPaymentMethod('cod')}
+                    className="accent-[#ff6b00]"
+                  />
+                  <div>
+                    <p className="text-xs font-bold text-slate-800">COD (Bayar di Tempat)</p>
+                    <p className="text-[10px] text-slate-400 font-semibold">Bayar saat kurir tiba</p>
+                  </div>
+                </label>
 
-              <label className={`flex items-center gap-3 p-3.5 border-2 rounded-2xl cursor-pointer transition-all ${
-                paymentMethod === 'qris' ? 'border-[#ff6b00] bg-orange-50/30' : 'border-slate-150 bg-white'
-              }`}>
-                <input 
-                  type="radio" 
-                  name="payment" 
-                  checked={paymentMethod === 'qris'} 
-                  onChange={() => setPaymentMethod('qris')}
-                  className="accent-[#ff6b00]"
-                />
-                <div>
-                  <p className="text-xs font-bold text-slate-800">QRIS / Transfer</p>
-                  <p className="text-[10px] text-slate-400 font-semibold">Scan otomatis</p>
-                </div>
-              </label>
-            </div>
-          </section>
+                <label className={`flex items-center gap-3 p-3.5 border-2 rounded-2xl cursor-pointer transition-all ${
+                  paymentMethod === 'qris' ? 'border-[#ff6b00] bg-orange-50/30' : 'border-slate-150 bg-white'
+                }`}>
+                  <input 
+                    type="radio" 
+                    name="payment" 
+                    checked={paymentMethod === 'qris'} 
+                    onChange={() => setPaymentMethod('qris')}
+                    className="accent-[#ff6b00]"
+                  />
+                  <div>
+                    <p className="text-xs font-bold text-slate-800">QRIS / Transfer</p>
+                    <p className="text-[10px] text-slate-400 font-semibold">Scan otomatis</p>
+                  </div>
+                </label>
+              </div>
+            </section>
+          ) : null}
 
           {/* Floating Bottom summary & Kirim Sekarang button */}
           <div className="fixed bottom-20 left-0 w-full bg-white/95 backdrop-blur-md border-t border-slate-100 p-6 shadow-[0_-8px_30px_rgb(0,0,0,0.04)] z-30">
@@ -340,13 +345,17 @@ export default function CartScreen({
 
               <button 
                 type="submit"
-                disabled={isOrdering}
-                className="w-full bg-[#ff6b00] hover:bg-[#e05e00] text-white py-4 rounded-2xl font-extrabold text-sm shadow-lg hover:shadow-orange-500/10 active:scale-[0.98] transition-all flex items-center justify-center gap-2 cursor-pointer"
+                disabled={isOrdering || !isLoggedIn}
+                className="w-full bg-[#ff6b00] hover:bg-[#e05e00] text-white py-4 rounded-2xl font-extrabold text-sm shadow-lg hover:shadow-orange-500/10 active:scale-[0.98] transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {isOrdering ? (
                   <>
                     <span className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
                     <span>Memproses &amp; Membuat Akun...</span>
+                  </>
+                ) : !isLoggedIn ? (
+                  <>
+                    <span>Isi Data Dulu</span>
                   </>
                 ) : (
                   <>

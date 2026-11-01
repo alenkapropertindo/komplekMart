@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { motion } from 'motion/react';
-import { ChevronRight, UserRound, LogIn, Loader2 } from 'lucide-react';
+import { ChevronRight, UserRound, LogIn, Loader2, AlertCircle } from 'lucide-react';
+import { supabase } from '../lib/supabase';
 
 interface LoginScreenProps {
   onLoginSuccess: (phoneNumber: string, name?: string, block?: string) => void;
@@ -12,6 +13,7 @@ export default function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
   const [name, setName] = useState('');
   const [showQuickLogin, setShowQuickLogin] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [error, setError] = useState('');
 
   const formatPhoneNumber = (value: string) => {
     const raw = value.replace(/\D/g, '');
@@ -30,22 +32,105 @@ export default function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
   const handlePhoneChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const formatted = formatPhoneNumber(e.target.value);
     setPhone(formatted);
+    setError('');
   };
 
   const handleQuickLoginSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setError('');
     setIsSubmitting(true);
-    if (phone.replace(/\s/g, '').length >= 9) {
-      // Simulasi login eksisting user
-      onLoginSuccess('+62 ' + phone, undefined, block.trim() || undefined);
+    
+    const cleanPhone = phone.replace(/\s/g, '');
+    if (cleanPhone.length < 9) {
+      setError('Nomor WhatsApp tidak valid');
+      setIsSubmitting(false);
+      return;
     }
-    setIsSubmitting(false);
+
+    try {
+      // Cek apakah user ada di database residents
+      const { data, error: queryErr } = await supabase
+        .from('residents')
+        .select('*')
+        .eq('phone', cleanPhone)
+        .single();
+
+      if (queryErr || !data) {
+        setError('Nomor WhatsApp tidak terdaftar. Silakan daftar terlebih dahulu.');
+        setIsSubmitting(false);
+        return;
+      }
+
+      // User ditemukan, lanjut login
+      onLoginSuccess(cleanPhone, data.name, data.block);
+    } catch (err) {
+      console.error('Login error:', err);
+      setError('Terjadi kesalahan. Silakan coba lagi.');
+      setIsSubmitting(false);
+    }
   };
 
-  const handleRegisterSubmit = (e: React.FormEvent) => {
+  const handleRegisterSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (phone.replace(/\s/g, '').length >= 9) {
-      onLoginSuccess('+62 ' + phone, name.trim() || undefined, block.trim() || undefined);
+    setError('');
+    
+    const cleanPhone = phone.replace(/\s/g, '');
+    if (cleanPhone.length < 9) {
+      setError('Nomor WhatsApp tidak valid');
+      return;
+    }
+    if (!name.trim()) {
+      setError('Nama lengkap harus diisi');
+      return;
+    }
+    if (!block.trim()) {
+      setError('Alamat/Blok harus diisi');
+      return;
+    }
+
+    setIsSubmitting(true);
+
+    try {
+      // Cek apakah user sudah terdaftar
+      const { data: existing, error: checkErr } = await supabase
+        .from('residents')
+        .select('id')
+        .eq('phone', cleanPhone)
+        .single();
+
+      if (existing && !checkErr) {
+        setError('Nomor WhatsApp sudah terdaftar. Silakan masuk.');
+        setIsSubmitting(false);
+        return;
+      }
+
+      // Daftar user baru
+      const { data: newRes, error: insertErr } = await supabase
+        .from('residents')
+        .insert([{
+          name: name.trim(),
+          phone: cleanPhone,
+          block: block.trim(),
+          role: 'resident',
+          status: 'Aktif',
+          total_spent: 0,
+          transactions: 0
+        }])
+        .select()
+        .single();
+
+      if (insertErr || !newRes) {
+        setError('Gagal mendaftar. Silakan coba lagi.');
+        setIsSubmitting(false);
+        return;
+      }
+
+      // Registrasi sukses
+      onLoginSuccess(cleanPhone, name.trim(), block.trim());
+    } catch (err) {
+      console.error('Register error:', err);
+      setError('Terjadi kesalahan. Silakan coba lagi.');
+      setIsSubmitting(false);
     }
   };
 
@@ -86,6 +171,13 @@ export default function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
                 <h2 className="text-sm font-black text-slate-900">Informasi Pengiriman & Akun</h2>
               </div>
             </div>
+
+            {error && (
+              <div className="w-full mb-4 flex items-start gap-2 bg-red-50 border border-red-200 rounded-2xl p-4">
+                <AlertCircle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
+                <p className="text-sm font-semibold text-red-700">{error}</p>
+              </div>
+            )}
 
             <form onSubmit={handleRegisterSubmit} className="w-full space-y-4">
               <div className="space-y-1.5">
@@ -176,6 +268,13 @@ export default function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
                 </p>
               </div>
             </div>
+
+            {error && (
+              <div className="w-full mb-4 flex items-start gap-2 bg-red-50 border border-red-200 rounded-2xl p-4">
+                <AlertCircle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
+                <p className="text-sm font-semibold text-red-700">{error}</p>
+              </div>
+            )}
 
             <form onSubmit={handleQuickLoginSubmit} className="w-full space-y-4">
               <div className="space-y-1.5">
